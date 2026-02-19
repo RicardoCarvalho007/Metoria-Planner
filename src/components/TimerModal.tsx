@@ -14,8 +14,9 @@ interface TimerModalProps {
 type TimerMode = "pomodoro" | "free";
 type TimerPhase = "focus" | "break" | "idle";
 
-const POMODORO_MINUTES = 25;
-const BREAK_MINUTES = 5;
+const POMODORO_FOCUS = 25;
+const POMODORO_BREAK = 5;
+const POMODORO_CYCLE = POMODORO_FOCUS + POMODORO_BREAK; // 30 min per cycle
 
 function formatTime(seconds: number) {
   const m = Math.floor(seconds / 60);
@@ -26,7 +27,7 @@ function formatTime(seconds: number) {
 export default function TimerModal({ session, onClose, onComplete }: TimerModalProps) {
   const [mode, setMode] = useState<TimerMode>("pomodoro");
   const [phase, setPhase] = useState<TimerPhase>("idle");
-  const [seconds, setSeconds] = useState(POMODORO_MINUTES * 60);
+  const [seconds, setSeconds] = useState(POMODORO_FOCUS * 60);
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
@@ -34,7 +35,11 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const elapsedRef = useRef(0);
 
-  const xpEarned = XP_FOR_DIFFICULTY[session.difficulty] + 50; // on-time bonus
+  const sessionMinutes = session.estimatedMinutes;
+  // How many full pomodoros fit in the session duration
+  const totalPomodoros = Math.max(1, Math.round(sessionMinutes / POMODORO_FOCUS));
+
+  const xpEarned = XP_FOR_DIFFICULTY[session.difficulty] + 50;
 
   useEffect(() => {
     if (isRunning) {
@@ -42,12 +47,19 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
         setSeconds((prev) => {
           if (mode === "pomodoro" && prev <= 1) {
             if (phase === "focus") {
-              setPomodoroCount((c) => c + 1);
+              const nextCount = pomodoroCount + 1;
+              setPomodoroCount(nextCount);
+              // If all pomodoros done, go to summary
+              if (nextCount >= totalPomodoros) {
+                setIsRunning(false);
+                setShowSummary(true);
+                return 0;
+              }
               setPhase("break");
-              return BREAK_MINUTES * 60;
+              return POMODORO_BREAK * 60;
             } else {
               setPhase("focus");
-              return POMODORO_MINUTES * 60;
+              return POMODORO_FOCUS * 60;
             }
           }
           return mode === "pomodoro" ? prev - 1 : prev + 1;
@@ -57,11 +69,11 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
       }, 1000);
     }
     return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isRunning, mode, phase]);
+  }, [isRunning, mode, phase, pomodoroCount, totalPomodoros]);
 
   const handleStart = () => {
     setPhase("focus");
-    if (mode === "pomodoro") setSeconds(POMODORO_MINUTES * 60);
+    if (mode === "pomodoro") setSeconds(POMODORO_FOCUS * 60);
     setIsRunning(true);
   };
 
@@ -77,11 +89,15 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
     onComplete(session.id, mins, xpEarned);
   };
 
-  const progress = mode === "pomodoro"
+  // Overall session progress (elapsed vs total session time)
+  const overallProgress = Math.min(elapsedSeconds / (sessionMinutes * 60), 1);
+
+  // Current pomodoro/break segment progress
+  const segmentProgress = mode === "pomodoro"
     ? phase === "focus"
-      ? 1 - seconds / (POMODORO_MINUTES * 60)
-      : 1 - seconds / (BREAK_MINUTES * 60)
-    : Math.min(elapsedSeconds / (session.estimatedMinutes * 60), 1);
+      ? 1 - seconds / (POMODORO_FOCUS * 60)
+      : 1 - seconds / (POMODORO_BREAK * 60)
+    : Math.min(elapsedSeconds / (sessionMinutes * 60), 1);
 
   const circumference = 2 * Math.PI * 90;
 
@@ -89,28 +105,43 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
     <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col animate-fade-up">
       <div className="mobile-container w-full flex flex-col flex-1 page-padding py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-2">
           <h2 className="font-bold text-lg truncate pr-4">{session.topicName}</h2>
           <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
             <X className="h-6 w-6" />
           </button>
         </div>
 
+        {/* Session duration info */}
+        <div className="flex items-center gap-2 mb-4">
+          <span className="text-xs text-muted-foreground">
+            Session: <span className="text-foreground font-semibold">{sessionMinutes} min</span>
+          </span>
+          {mode === "pomodoro" && (
+            <span className="text-xs text-muted-foreground">
+              · <span className="text-foreground font-semibold">{totalPomodoros}</span> pomodoros
+            </span>
+          )}
+        </div>
+
         {!showSummary ? (
           <>
             {/* Mode selector */}
             {phase === "idle" && (
-              <div className="flex gap-2 bg-secondary rounded-xl p-1 mb-8">
+              <div className="flex gap-2 bg-secondary rounded-xl p-1 mb-6">
                 {(["pomodoro", "free"] as TimerMode[]).map((m) => (
                   <button
                     key={m}
-                    onClick={() => { setMode(m); setSeconds(m === "pomodoro" ? POMODORO_MINUTES * 60 : 0); }}
+                    onClick={() => {
+                      setMode(m);
+                      setSeconds(m === "pomodoro" ? POMODORO_FOCUS * 60 : 0);
+                    }}
                     className={cn(
                       "flex-1 py-2 rounded-lg text-sm font-semibold transition-all",
                       mode === m ? "gradient-primary text-primary-foreground" : "text-muted-foreground"
                     )}
                   >
-                    {m === "pomodoro" ? "🍅 Pomodoro (25min)" : "⏱ Free Timer"}
+                    {m === "pomodoro" ? `🍅 Pomodoro (25min)` : "⏱ Free Timer"}
                   </button>
                 ))}
               </div>
@@ -122,7 +153,9 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
                 "text-center text-sm font-semibold px-4 py-1.5 rounded-full mb-4 self-center",
                 phase === "focus" ? "bg-primary/20 text-primary" : "bg-success/20 text-success"
               )}>
-                {phase === "focus" ? "🧠 Focus time" : "☕ Break time"}
+                {phase === "focus"
+                  ? `🧠 Focus · ${pomodoroCount + 1} of ${totalPomodoros}`
+                  : "☕ Break time"}
               </div>
             )}
 
@@ -131,6 +164,17 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
               <div className="relative w-56 h-56">
                 <svg className="w-full h-full -rotate-90" viewBox="0 0 200 200">
                   <circle cx="100" cy="100" r="90" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
+                  {/* Outer ring: overall session progress */}
+                  <circle
+                    cx="100" cy="100" r="90"
+                    fill="none"
+                    stroke="hsl(var(--primary) / 0.2)"
+                    strokeWidth="8"
+                    strokeDasharray={circumference}
+                    strokeDashoffset={circumference * (1 - overallProgress)}
+                    className="transition-all duration-1000"
+                  />
+                  {/* Inner ring: current segment progress */}
                   <circle
                     cx="100" cy="100" r="90"
                     fill="none"
@@ -138,18 +182,23 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
                     strokeWidth="8"
                     strokeLinecap="round"
                     strokeDasharray={circumference}
-                    strokeDashoffset={circumference * (1 - progress)}
+                    strokeDashoffset={circumference * (1 - segmentProgress)}
                     className="transition-all duration-1000"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
                   <div className={cn("text-5xl font-black tabular-nums", isRunning && "animate-timer-tick")}>
-                    {mode === "pomodoro" ? formatTime(seconds) : formatTime(seconds)}
+                    {formatTime(seconds)}
                   </div>
+                  {phase !== "idle" && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {Math.max(0, sessionMinutes - Math.floor(elapsedSeconds / 60))}min left
+                    </p>
+                  )}
                   {pomodoroCount > 0 && (
-                    <div className="flex gap-0.5 mt-2">
+                    <div className="flex gap-0.5 mt-1">
                       {Array.from({ length: pomodoroCount }).map((_, i) => (
-                        <Flame key={i} className="h-4 w-4 text-warning" />
+                        <Flame key={i} className="h-3.5 w-3.5 text-warning" />
                       ))}
                     </div>
                   )}
@@ -157,7 +206,22 @@ export default function TimerModal({ session, onClose, onComplete }: TimerModalP
               </div>
             </div>
 
-            {/* Controls */}
+            {/* Overall session progress bar */}
+            {phase !== "idle" && (
+              <div className="mb-2 px-1">
+                <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
+                  <span>Session progress</span>
+                  <span className="font-semibold text-foreground">{Math.round(overallProgress * 100)}% · {sessionMinutes}min total</span>
+                </div>
+                <div className="h-2 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className="h-full gradient-primary rounded-full transition-all duration-1000"
+                    style={{ width: `${overallProgress * 100}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <div className="space-y-3 pb-4">
               {phase === "idle" ? (
                 <Button
