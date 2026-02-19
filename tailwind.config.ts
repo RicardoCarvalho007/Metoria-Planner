@@ -96,8 +96,8 @@ export default {
           "100%": { opacity: "1", transform: "translateX(0)" },
         },
         "pulse-glow": {
-          "0%, 100%": { boxShadow: "0 0 10px hsl(262 83% 58% / 0.3)" },
-          "50%": { boxShadow: "0 0 25px hsl(262 83% 58% / 0.7)" },
+          "0%, 100%": { boxShadow: "0 0 10px hsl(22 95% 52% / 0.3)" },
+          "50%": { boxShadow: "0 0 25px hsl(22 95% 52% / 0.7)" },
         },
         "timer-tick": {
           "0%": { transform: "scale(1)" },
