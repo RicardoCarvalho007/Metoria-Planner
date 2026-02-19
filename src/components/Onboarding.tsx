@@ -6,6 +6,14 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ChevronRight, BookOpen, Calendar, Clock, CheckCircle2 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import metoriaLogo from "@/assets/metoria-logo.jpg";
+
+function MetoriaLogo({ className }: { className?: string }) {
+  return (
+    <img src={metoriaLogo} alt="Metoria" className={cn("object-contain", className)} />
+  );
+}
+
 
 interface OnboardingProps {
   onComplete: (name: string, course: Course, examDate: string) => void;
@@ -79,12 +87,9 @@ export default function Onboarding({ onComplete }: OnboardingProps) {
         {step === "welcome" && (
           <div className="text-center space-y-8">
             <div className="space-y-2">
-              <div className="text-7xl mb-4">📐</div>
-              <h1 className="text-4xl font-black tracking-tight">
-                <span className="gradient-primary bg-clip-text text-transparent" style={{ WebkitBackgroundClip: "text", WebkitTextFillColor: "transparent" }}>
-                  Metoria
-                </span>
-              </h1>
+              <div className="flex justify-center mb-4">
+                <MetoriaLogo className="h-14" />
+              </div>
               <p className="text-lg text-muted-foreground font-medium">Plan your IB Math. Study smarter.</p>
             </div>
             <div className="space-y-4 text-left">
