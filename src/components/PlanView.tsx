@@ -2,9 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, Calendar, List, Clock, HelpCircle } from "lucide-react";
+import { AlertTriangle, Calendar, List, Clock, HelpCircle, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { CHAPTERS, getChapterForTopic } from "@/data/syllabus";
+import { CHAPTERS, getChapterForTopic, getSubTopicsForTopic } from "@/data/syllabus";
 import { rescheduleAllMissed } from "@/actions/plan";
 import { toggleTutorHelp } from "@/actions/tutor";
 import type { ScheduledSession } from "@/types/database";
@@ -37,6 +37,7 @@ export default function PlanView({ sessions: initialSessions, completedCount, to
 
   const todayStr = new Date().toISOString().split("T")[0];
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [expandedSession, setExpandedSession] = useState<string | null>(null);
 
   const calendarDays = (() => {
     const days: Date[] = [];
@@ -221,30 +222,61 @@ export default function PlanView({ sessions: initialSessions, completedCount, to
                   <div className="space-y-2">
                     {daySessions.map((s) => {
                       const cfg = STATUS_CONFIG[s.status];
+                      const isExpanded = expandedSession === s.id;
+                      const subTopics = getSubTopicsForTopic(s.topic_id);
                       return (
-                        <div
-                          key={s.id}
-                          className={cn(
-                            "flex items-center gap-3 rounded-lg border px-3 py-2.5",
-                            s.status === "completed" ? "border-success/30 bg-success/5" :
-                            s.status === "missed" ? "border-destructive/30 bg-destructive/5" :
-                            "border-border bg-muted/30"
-                          )}
-                        >
-                          <span className="text-base">{cfg.icon}</span>
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-medium">{s.topic_name}</p>
-                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              <span>{s.estimated_minutes} min</span>
-                              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", cfg.cls)}>
-                                {cfg.label}
-                              </span>
-                              {s.xp_earned > 0 && (
-                                <span className="font-medium text-warning">+{s.xp_earned} XP</span>
-                              )}
+                        <div key={s.id} className="space-y-0">
+                          <button
+                            onClick={() => setExpandedSession(isExpanded ? null : s.id)}
+                            className={cn(
+                              "flex w-full items-center gap-3 rounded-lg border px-3 py-2.5 text-left transition-all",
+                              s.status === "completed" ? "border-success/30 bg-success/5" :
+                              s.status === "missed" ? "border-destructive/30 bg-destructive/5" :
+                              "border-border bg-muted/30",
+                              isExpanded && "rounded-b-none",
+                            )}
+                          >
+                            <span className="text-base flex-shrink-0">{cfg.icon}</span>
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium leading-tight">{s.topic_name}</p>
+                              <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                                <Clock className="h-3 w-3" />
+                                <span>{s.estimated_minutes} min</span>
+                                <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", cfg.cls)}>
+                                  {cfg.label}
+                                </span>
+                                {s.xp_earned > 0 && (
+                                  <span className="font-medium text-warning">+{s.xp_earned} XP</span>
+                                )}
+                              </div>
                             </div>
-                          </div>
+                            {subTopics.length > 0 && (
+                              <ChevronDown className={cn(
+                                "h-4 w-4 flex-shrink-0 text-muted-foreground transition-transform",
+                                isExpanded && "rotate-180"
+                              )} />
+                            )}
+                          </button>
+                          {isExpanded && subTopics.length > 0 && (
+                            <div className="rounded-b-lg border border-t-0 border-border bg-card px-4 py-3 space-y-2.5">
+                              <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                                Sub-topics covered
+                              </p>
+                              {subTopics.map((st) => (
+                                <div key={st.id} className="space-y-1">
+                                  <p className="text-xs font-semibold">{st.name}</p>
+                                  <ul className="space-y-0.5 pl-3">
+                                    {st.learningObjectives.map((obj, i) => (
+                                      <li key={i} className="text-[11px] text-muted-foreground leading-snug flex gap-1.5">
+                                        <span className="text-primary mt-px">•</span>
+                                        <span>{obj}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
