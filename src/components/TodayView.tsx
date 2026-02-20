@@ -192,7 +192,7 @@ export default function TodayView({
       {/* Today's progress */}
       <div className="rounded-xl border border-border bg-card p-4 shadow-card">
         <div className="mb-2 flex items-center justify-between">
-          <span className="text-sm font-semibold">Today&apos;s Progress <span className="text-[9px] text-muted-foreground/50">v2</span></span>
+          <span className="text-sm font-semibold">Today&apos;s Progress</span>
           <span className="text-sm font-bold text-primary">{completed}/{total}</span>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-muted">

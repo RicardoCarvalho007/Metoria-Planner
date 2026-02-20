@@ -36,6 +36,7 @@ export default function PlanView({ sessions: initialSessions, completedCount, to
   const circumference = 2 * Math.PI * 40;
 
   const todayStr = new Date().toISOString().split("T")[0];
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
 
   const calendarDays = (() => {
     const days: Date[] = [];
@@ -155,35 +156,103 @@ export default function PlanView({ sessions: initialSessions, completedCount, to
 
       {/* Calendar view */}
       {view === "calendar" && (
-        <div className="rounded-xl border border-border bg-card p-4 shadow-card">
-          <div className="mb-2 grid grid-cols-7 gap-1 text-center">
-            {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
-              <div key={i} className="py-1 text-xs font-semibold text-muted-foreground">{d}</div>
-            ))}
+        <div className="space-y-3">
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <div className="mb-2 grid grid-cols-7 gap-1 text-center">
+              {["M", "T", "W", "T", "F", "S", "S"].map((d, i) => (
+                <div key={i} className="py-1 text-xs font-semibold text-muted-foreground">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1">
+              {calendarDays.map((d, i) => {
+                const dateStr = d.toISOString().split("T")[0];
+                const daySessions = sessions.filter((s) => s.scheduled_date === dateStr);
+                const hasSession = daySessions.length > 0;
+                const isToday = dateStr === todayStr;
+                const isPast = dateStr < todayStr;
+                const isSelected = dateStr === selectedDate;
+                const hasCompleted = daySessions.some((s) => s.status === "completed");
+                const hasMissed = daySessions.some((s) => s.status === "missed");
+                return (
+                  <button
+                    key={i}
+                    onClick={() => setSelectedDate(isSelected ? null : dateStr)}
+                    className={cn(
+                      "relative flex aspect-square flex-col items-center justify-center rounded-lg text-xs font-medium transition-all",
+                      isToday && !isSelected && "bg-primary text-white",
+                      isSelected && "ring-2 ring-primary bg-primary/20 text-primary font-bold",
+                      !isToday && !isSelected && isPast && "text-muted-foreground",
+                      hasSession && !isToday && !isSelected && "hover:bg-muted",
+                    )}
+                  >
+                    {d.getDate()}
+                    {hasSession && !isToday && (
+                      <div className={cn(
+                        "absolute bottom-1 h-1.5 w-1.5 rounded-full",
+                        hasCompleted ? "bg-success" : hasMissed ? "bg-destructive" : isPast ? "bg-muted-foreground" : "bg-primary",
+                      )} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
-          <div className="grid grid-cols-7 gap-1">
-            {calendarDays.map((d, i) => {
-              const dateStr = d.toISOString().split("T")[0];
-              const hasSession = sessions.some((s) => s.scheduled_date === dateStr);
-              const isToday = dateStr === todayStr;
-              const isPast = dateStr < todayStr;
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    "relative flex aspect-square flex-col items-center justify-center rounded-lg text-xs font-medium",
-                    isToday && "bg-primary text-white",
-                    !isToday && isPast && "text-muted-foreground",
-                  )}
-                >
-                  {d.getDate()}
-                  {hasSession && !isToday && (
-                    <div className={cn("absolute bottom-1 h-1.5 w-1.5 rounded-full", isPast ? "bg-muted-foreground" : "bg-primary")} />
-                  )}
+
+          {/* Selected day detail */}
+          {selectedDate && (() => {
+            const daySessions = sessions.filter((s) => s.scheduled_date === selectedDate);
+            const dateObj = new Date(selectedDate + "T12:00:00");
+            const dateLabel = selectedDate === todayStr
+              ? "Today"
+              : dateObj.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+            const totalMin = daySessions.reduce((sum, s) => sum + s.estimated_minutes, 0);
+
+            return (
+              <div className="rounded-xl border border-border bg-card p-4 shadow-card animate-fade-up">
+                <div className="mb-3 flex items-center justify-between">
+                  <h3 className="text-sm font-bold">{dateLabel}</h3>
+                  <span className="text-xs text-muted-foreground">
+                    {daySessions.length} session{daySessions.length !== 1 ? "s" : ""} · {totalMin} min total
+                  </span>
                 </div>
-              );
-            })}
-          </div>
+                {daySessions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No sessions scheduled.</p>
+                ) : (
+                  <div className="space-y-2">
+                    {daySessions.map((s) => {
+                      const cfg = STATUS_CONFIG[s.status];
+                      return (
+                        <div
+                          key={s.id}
+                          className={cn(
+                            "flex items-center gap-3 rounded-lg border px-3 py-2.5",
+                            s.status === "completed" ? "border-success/30 bg-success/5" :
+                            s.status === "missed" ? "border-destructive/30 bg-destructive/5" :
+                            "border-border bg-muted/30"
+                          )}
+                        >
+                          <span className="text-base">{cfg.icon}</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{s.topic_name}</p>
+                            <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              <span>{s.estimated_minutes} min</span>
+                              <span className={cn("rounded-full px-1.5 py-0.5 text-[10px] font-semibold", cfg.cls)}>
+                                {cfg.label}
+                              </span>
+                              {s.xp_earned > 0 && (
+                                <span className="font-medium text-warning">+{s.xp_earned} XP</span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       )}
 
