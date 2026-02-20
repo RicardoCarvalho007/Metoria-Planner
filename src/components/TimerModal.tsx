@@ -1,281 +1,401 @@
-import { useState, useEffect, useRef } from "react";
-import { ScheduledSession } from "@/types/app";
-import { XP_FOR_DIFFICULTY } from "@/data/syllabus";
-import { X, Pause, Play, StopCircle, Flame } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+"use client";
 
-interface TimerModalProps {
+import { useState, useEffect, useRef } from "react";
+import { X, Pause, Play, StopCircle, Flame, AlertTriangle } from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { ScheduledSession } from "@/types/database";
+import { completeSession } from "@/actions/session";
+
+interface Props {
   session: ScheduledSession;
   onClose: () => void;
-  onComplete: (sessionId: string, minutes: number, xp: number) => void;
+  onComplete: (result: {
+    xpEarned: number;
+    baseXp: number;
+    onTimeBonus: number;
+    streakBonus: number;
+    isReview: boolean;
+    newBadges: string[];
+    newStreak: number;
+  }) => void;
 }
 
-type TimerMode = "pomodoro" | "free";
-type TimerPhase = "focus" | "break" | "idle";
+type TimerMode = "countdown" | "free";
 
-const POMODORO_FOCUS = 25;
-const POMODORO_BREAK = 5;
-const POMODORO_CYCLE = POMODORO_FOCUS + POMODORO_BREAK; // 30 min per cycle
-
-function formatTime(seconds: number) {
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+function formatTime(s: number) {
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
 }
 
-export default function TimerModal({ session, onClose, onComplete }: TimerModalProps) {
-  const [mode, setMode] = useState<TimerMode>("pomodoro");
-  const [phase, setPhase] = useState<TimerPhase>("idle");
-  const [seconds, setSeconds] = useState(POMODORO_FOCUS * 60);
-  const [isRunning, setIsRunning] = useState(false);
-  const [elapsedSeconds, setElapsedSeconds] = useState(0);
-  const [showSummary, setShowSummary] = useState(false);
-  const [pomodoroCount, setPomodoroCount] = useState(0);
-  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const elapsedRef = useRef(0);
+const CONFETTI_COLORS = [
+  "hsl(25 95% 53%)",
+  "hsl(38 93% 50%)",
+  "hsl(217 91% 60%)",
+  "hsl(160 84% 39%)",
+  "hsl(0 0% 100%)",
+];
 
-  const sessionMinutes = session.estimatedMinutes;
-  // How many full pomodoros fit in the session duration
-  const totalPomodoros = Math.max(1, Math.round(sessionMinutes / POMODORO_FOCUS));
+function ConfettiPiece({ index }: { index: number }) {
+  const color = CONFETTI_COLORS[index % CONFETTI_COLORS.length];
+  const left = Math.random() * 100;
+  const delay = Math.random() * 0.8;
+  const duration = 1.5 + Math.random() * 1.5;
+  const size = 6 + Math.random() * 6;
+  const rotation = Math.random() * 360;
+  const drift = (Math.random() - 0.5) * 60;
 
-  const xpEarned = XP_FOR_DIFFICULTY[session.difficulty] + 50;
+  return (
+    <div
+      className="confetti-piece"
+      style={{
+        position: "absolute",
+        left: `${left}%`,
+        top: "-10px",
+        width: `${size}px`,
+        height: `${size * 0.6}px`,
+        backgroundColor: color,
+        borderRadius: "2px",
+        opacity: 0,
+        transform: `rotate(${rotation}deg)`,
+        animation: `confetti-fall ${duration}s ease-out ${delay}s forwards`,
+        // @ts-expect-error CSS custom property
+        "--confetti-drift": `${drift}px`,
+      }}
+    />
+  );
+}
+
+function AnimatedXP({ target }: { target: number }) {
+  const [count, setCount] = useState(0);
+  const ref = useRef<ReturnType<typeof requestAnimationFrame>>();
 
   useEffect(() => {
-    if (isRunning) {
-      intervalRef.current = setInterval(() => {
-        setSeconds((prev) => {
-          if (mode === "pomodoro" && prev <= 1) {
-            if (phase === "focus") {
-              const nextCount = pomodoroCount + 1;
-              setPomodoroCount(nextCount);
-              // If all pomodoros done, go to summary
-              if (nextCount >= totalPomodoros) {
-                setIsRunning(false);
-                setShowSummary(true);
-                return 0;
-              }
-              setPhase("break");
-              return POMODORO_BREAK * 60;
-            } else {
-              setPhase("focus");
-              return POMODORO_FOCUS * 60;
-            }
-          }
-          return mode === "pomodoro" ? prev - 1 : prev + 1;
-        });
-        elapsedRef.current += 1;
-        setElapsedSeconds((e) => e + 1);
-      }, 1000);
-    }
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, [isRunning, mode, phase, pomodoroCount, totalPomodoros]);
+    const start = performance.now();
+    const duration = 1200;
 
-  const handleStart = () => {
-    setPhase("focus");
-    if (mode === "pomodoro") setSeconds(POMODORO_FOCUS * 60);
-    setIsRunning(true);
-  };
+    const animate = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      const eased = 1 - Math.pow(1 - progress, 3);
+      setCount(Math.round(eased * target));
+      if (progress < 1) ref.current = requestAnimationFrame(animate);
+    };
+    ref.current = requestAnimationFrame(animate);
 
-  const handlePause = () => setIsRunning((p) => !p);
+    return () => {
+      if (ref.current) cancelAnimationFrame(ref.current);
+    };
+  }, [target]);
 
-  const handleEnd = () => {
-    setIsRunning(false);
-    setShowSummary(true);
-  };
+  return <>{count}</>;
+}
 
-  const handleConfirmComplete = () => {
-    const mins = Math.ceil(elapsedSeconds / 60);
-    onComplete(session.id, mins, xpEarned);
-  };
+export default function TimerModal({ session, onClose, onComplete }: Props) {
+  const sessionSeconds = session.estimated_minutes * 60;
 
-  // Overall session progress (elapsed vs total session time)
-  const overallProgress = Math.min(elapsedSeconds / (sessionMinutes * 60), 1);
-
-  // Current pomodoro/break segment progress
-  const segmentProgress = mode === "pomodoro"
-    ? phase === "focus"
-      ? 1 - seconds / (POMODORO_FOCUS * 60)
-      : 1 - seconds / (POMODORO_BREAK * 60)
-    : Math.min(elapsedSeconds / (sessionMinutes * 60), 1);
+  const [mode, setMode] = useState<TimerMode>("countdown");
+  const [started, setStarted] = useState(false);
+  const [seconds, setSeconds] = useState(sessionSeconds);
+  const [running, setRunning] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [showSummary, setShowSummary] = useState(false);
+  const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const [summaryData, setSummaryData] = useState<{
+    xpEarned: number;
+    baseXp: number;
+    onTimeBonus: number;
+    streakBonus: number;
+    isReview: boolean;
+    newStreak: number;
+  } | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const timerFinishedRef = useRef(false);
+  const elapsedRef = useRef(0);
+  const completingRef = useRef(false);
 
   const circumference = 2 * Math.PI * 90;
 
+  useEffect(() => {
+    if (running) {
+      intervalRef.current = setInterval(() => {
+        elapsedRef.current += 1;
+        setElapsed(elapsedRef.current);
+        setSeconds((prev) => {
+          if (mode === "countdown") {
+            if (prev <= 1) {
+              if (!timerFinishedRef.current) {
+                timerFinishedRef.current = true;
+                setRunning(false);
+                handleTimerComplete();
+              }
+              return 0;
+            }
+            return prev - 1;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [running, mode]);
+
+  const handleStart = () => {
+    setStarted(true);
+    elapsedRef.current = 0;
+    setElapsed(0);
+    if (mode === "countdown") setSeconds(sessionSeconds);
+    else setSeconds(0);
+    setRunning(true);
+  };
+
+  const handleTimerComplete = async () => {
+    if (completingRef.current) return;
+    completingRef.current = true;
+    setSubmitting(true);
+    const mins = Math.max(1, Math.ceil(elapsedRef.current / 60));
+    const result = await completeSession(session.id, mins);
+
+    if ("error" in result) {
+      setSubmitting(false);
+      return;
+    }
+
+    setSummaryData({
+      xpEarned: result.xpEarned,
+      baseXp: result.baseXp,
+      onTimeBonus: result.onTimeBonus,
+      streakBonus: result.streakBonus,
+      isReview: result.isReview,
+      newStreak: result.newStreak,
+    });
+    setShowSummary(true);
+    setSubmitting(false);
+  };
+
+  const handleEndEarly = () => {
+    setRunning(false);
+    if (mode === "free" || timerFinishedRef.current) {
+      handleTimerComplete();
+    } else {
+      setShowQuitConfirm(true);
+    }
+  };
+
+  const handleConfirmQuit = () => {
+    setShowQuitConfirm(false);
+    onClose();
+  };
+
+  const handleCancelQuit = () => {
+    setShowQuitConfirm(false);
+    setRunning(true);
+  };
+
+  const handleClaim = () => {
+    if (summaryData) {
+      onComplete({ ...summaryData, newBadges: [] });
+    }
+    onClose();
+  };
+
+  const progress =
+    mode === "countdown"
+      ? started ? 1 - seconds / sessionSeconds : 0
+      : Math.min(elapsed / sessionSeconds, 1);
+
+  const MOTIVATIONAL = [
+    "You're crushing it!",
+    "Knowledge is power!",
+    "One step closer to acing that exam!",
+    "Consistency is the key to mastery!",
+    "Your future self will thank you!",
+  ];
+  const motivationalIdxRef = useRef(Math.floor(Math.random() * MOTIVATIONAL.length));
+  const motivationalMsg = MOTIVATIONAL[motivationalIdxRef.current];
+
   return (
-    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex flex-col animate-fade-up">
-      <div className="mobile-container w-full flex flex-col flex-1 page-padding py-6">
+    <div className="fixed inset-0 z-50 flex flex-col bg-background/95 backdrop-blur-sm animate-fade-up">
+      <div className="mobile-container flex w-full flex-1 flex-col page-padding py-6">
         {/* Header */}
-        <div className="flex items-center justify-between mb-2">
-          <h2 className="font-bold text-lg truncate pr-4">{session.topicName}</h2>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground p-1">
+        <div className="mb-2 flex items-center justify-between">
+          <h2 className="truncate pr-4 text-lg font-bold">{session.topic_name}</h2>
+          <button onClick={onClose} className="p-1 text-muted-foreground hover:text-foreground">
             <X className="h-6 w-6" />
           </button>
         </div>
-
-        {/* Session duration info */}
-        <div className="flex items-center gap-2 mb-4">
-          <span className="text-xs text-muted-foreground">
-            Session: <span className="text-foreground font-semibold">{sessionMinutes} min</span>
+        <div className="mb-4 flex items-center gap-2 text-xs text-muted-foreground">
+          <span>
+            Session: <span className="font-semibold text-foreground">{session.estimated_minutes} min</span>
           </span>
-          {mode === "pomodoro" && (
-            <span className="text-xs text-muted-foreground">
-              · <span className="text-foreground font-semibold">{totalPomodoros}</span> pomodoros
-            </span>
-          )}
         </div>
+
+        {/* ── Quit Confirmation Overlay ── */}
+        {showQuitConfirm && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/90 backdrop-blur-sm px-6">
+            <div className="w-full max-w-sm space-y-5 rounded-2xl border border-warning/30 bg-card p-6 text-center shadow-card">
+              <div className="flex justify-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-warning/20">
+                  <AlertTriangle className="h-7 w-7 text-warning" />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <h3 className="text-xl font-black">Are you sure?</h3>
+                <p className="text-sm text-muted-foreground">
+                  The timer hasn&apos;t finished yet. If you leave now, you&apos;ll{" "}
+                  <span className="font-semibold text-destructive">lose all XP</span> and the session won&apos;t count as completed.
+                </p>
+              </div>
+              <div className="space-y-2">
+                <button
+                  onClick={handleCancelQuit}
+                  className="w-full rounded-xl gradient-primary py-3.5 text-sm font-bold text-white glow-primary"
+                >
+                  Keep Studying
+                </button>
+                <button
+                  onClick={handleConfirmQuit}
+                  className="w-full rounded-xl border border-destructive/30 py-3.5 text-sm font-semibold text-destructive transition-all hover:bg-destructive/10"
+                >
+                  Quit — No XP
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {!showSummary ? (
           <>
-            {/* Mode selector */}
-            {phase === "idle" && (
-              <div className="flex gap-2 bg-secondary rounded-xl p-1 mb-6">
-                {(["pomodoro", "free"] as TimerMode[]).map((m) => (
+            {!started && (
+              <div className="mb-6 flex gap-2 rounded-xl bg-muted p-1">
+                {(["countdown", "free"] as TimerMode[]).map((m) => (
                   <button
                     key={m}
                     onClick={() => {
                       setMode(m);
-                      setSeconds(m === "pomodoro" ? POMODORO_FOCUS * 60 : 0);
+                      setSeconds(m === "countdown" ? sessionSeconds : 0);
                     }}
                     className={cn(
-                      "flex-1 py-2 rounded-lg text-sm font-semibold transition-all",
-                      mode === m ? "gradient-primary text-primary-foreground" : "text-muted-foreground"
+                      "flex-1 rounded-lg py-2 text-sm font-semibold transition-all",
+                      mode === m ? "gradient-primary text-white" : "text-muted-foreground"
                     )}
                   >
-                    {m === "pomodoro" ? `🍅 Pomodoro (25min)` : "⏱ Free Timer"}
+                    {m === "countdown" ? `⏱ ${session.estimated_minutes}min` : "🔓 Free Timer"}
                   </button>
                 ))}
               </div>
             )}
 
-            {/* Phase badge */}
-            {phase !== "idle" && (
-              <div className={cn(
-                "text-center text-sm font-semibold px-4 py-1.5 rounded-full mb-4 self-center",
-                phase === "focus" ? "bg-primary/20 text-primary" : "bg-success/20 text-success"
-              )}>
-                {phase === "focus"
-                  ? `🧠 Focus · ${pomodoroCount + 1} of ${totalPomodoros}`
-                  : "☕ Break time"}
+            {started && (
+              <div className="mb-4 self-center rounded-full bg-primary/20 px-4 py-1.5 text-center text-sm font-semibold text-primary">
+                {mode === "countdown"
+                  ? `🧠 Focus · ${session.estimated_minutes} min session`
+                  : "🧠 Focus · Free timer"}
               </div>
             )}
 
-            {/* Timer circle */}
-            <div className="flex-1 flex items-center justify-center">
-              <div className="relative w-56 h-56">
-                <svg className="w-full h-full -rotate-90" viewBox="0 0 200 200">
+            <div className="flex flex-1 items-center justify-center">
+              <div className="relative h-56 w-56">
+                <svg className="h-full w-full -rotate-90" viewBox="0 0 200 200">
                   <circle cx="100" cy="100" r="90" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
-                  {/* Outer ring: overall session progress */}
                   <circle
-                    cx="100" cy="100" r="90"
-                    fill="none"
-                    stroke="hsl(var(--primary) / 0.2)"
-                    strokeWidth="8"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={circumference * (1 - overallProgress)}
-                    className="transition-all duration-1000"
-                  />
-                  {/* Inner ring: current segment progress */}
-                  <circle
-                    cx="100" cy="100" r="90"
-                    fill="none"
-                    stroke={phase === "break" ? "hsl(var(--success))" : "hsl(var(--primary))"}
-                    strokeWidth="8"
-                    strokeLinecap="round"
-                    strokeDasharray={circumference}
-                    strokeDashoffset={circumference * (1 - segmentProgress)}
+                    cx="100" cy="100" r="90" fill="none" stroke="hsl(var(--primary))"
+                    strokeWidth="8" strokeLinecap="round" strokeDasharray={circumference}
+                    strokeDashoffset={circumference * (1 - progress)}
                     className="transition-all duration-1000"
                   />
                 </svg>
                 <div className="absolute inset-0 flex flex-col items-center justify-center">
-                  <div className={cn("text-5xl font-black tabular-nums", isRunning && "animate-timer-tick")}>
+                  <div className={cn("text-5xl font-black tabular-nums", running && "animate-timer-tick")}>
                     {formatTime(seconds)}
                   </div>
-                  {phase !== "idle" && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {Math.max(0, sessionMinutes - Math.floor(elapsedSeconds / 60))}min left
-                    </p>
-                  )}
-                  {pomodoroCount > 0 && (
-                    <div className="flex gap-0.5 mt-1">
-                      {Array.from({ length: pomodoroCount }).map((_, i) => (
-                        <Flame key={i} className="h-3.5 w-3.5 text-warning" />
-                      ))}
+                  {started && (
+                    <div className="mt-1 text-xs text-muted-foreground">
+                      {mode === "countdown" ? "remaining" : "elapsed"}
                     </div>
                   )}
                 </div>
               </div>
             </div>
 
-            {/* Overall session progress bar */}
-            {phase !== "idle" && (
-              <div className="mb-2 px-1">
-                <div className="flex justify-between text-xs text-muted-foreground mb-1.5">
-                  <span>Session progress</span>
-                  <span className="font-semibold text-foreground">{Math.round(overallProgress * 100)}% · {sessionMinutes}min total</span>
-                </div>
-                <div className="h-2 bg-muted rounded-full overflow-hidden">
-                  <div
-                    className="h-full gradient-primary rounded-full transition-all duration-1000"
-                    style={{ width: `${overallProgress * 100}%` }}
-                  />
-                </div>
-              </div>
-            )}
-
             <div className="space-y-3 pb-4">
-              {phase === "idle" ? (
-                <Button
-                  className="w-full gradient-primary text-primary-foreground font-bold py-4 text-base rounded-xl glow-primary"
-                  onClick={handleStart}
-                >
+              {!started ? (
+                <button className="w-full rounded-xl gradient-primary py-4 text-base font-bold text-white glow-primary" onClick={handleStart}>
                   Start Session ▶
-                </Button>
+                </button>
               ) : (
                 <>
-                  <Button
-                    variant="outline"
-                    className="w-full py-4 rounded-xl border-border font-semibold"
-                    onClick={handlePause}
+                  <button className="w-full rounded-xl border border-border py-4 font-semibold" onClick={() => setRunning((r) => !r)}>
+                    {running ? <><Pause className="mr-2 inline h-4 w-4" />Pause</> : <><Play className="mr-2 inline h-4 w-4" />Resume</>}
+                  </button>
+                  <button
+                    className="w-full rounded-xl gradient-primary py-4 font-bold text-white disabled:opacity-50"
+                    onClick={handleEndEarly} disabled={submitting}
                   >
-                    {isRunning ? <><Pause className="h-4 w-4 mr-2" /> Pause</> : <><Play className="h-4 w-4 mr-2" /> Resume</>}
-                  </Button>
-                  <Button
-                    className="w-full gradient-primary text-primary-foreground font-bold py-4 rounded-xl"
-                    onClick={handleEnd}
-                  >
-                    <StopCircle className="h-4 w-4 mr-2" /> End Session
-                  </Button>
+                    <StopCircle className="mr-2 inline h-4 w-4" />
+                    {submitting ? "Saving..." : "End Session"}
+                  </button>
                 </>
               )}
             </div>
           </>
         ) : (
-          /* Summary */
-          <div className="flex-1 flex flex-col items-center justify-center text-center space-y-6">
-            <div className="text-6xl">🎉</div>
-            <div className="space-y-2">
-              <h3 className="text-2xl font-black">Session Complete!</h3>
-              <p className="text-muted-foreground">You studied for {Math.max(1, Math.ceil(elapsedSeconds / 60))} minutes</p>
+          /* ── Celebration Summary ── */
+          <div className="relative flex flex-1 flex-col items-center justify-center space-y-6 text-center overflow-hidden">
+            <div className="pointer-events-none absolute inset-0">
+              {Array.from({ length: 40 }).map((_, i) => (
+                <ConfettiPiece key={i} index={i} />
+              ))}
             </div>
-            <div className="bg-card rounded-2xl p-6 w-full space-y-4 shadow-card">
-              <div className="text-4xl font-black text-primary">+{xpEarned} XP</div>
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="bg-muted rounded-xl p-3">
-                  <div className="text-muted-foreground">Base XP</div>
-                  <div className="font-bold text-lg">{XP_FOR_DIFFICULTY[session.difficulty]}</div>
+
+            <div className="relative space-y-2">
+              <div className="text-6xl">🎉</div>
+              <h3 className="text-3xl font-black">Topic Complete!</h3>
+              <p className="text-sm italic text-muted-foreground">&ldquo;{motivationalMsg}&rdquo;</p>
+              <p className="text-muted-foreground">
+                You studied for <span className="font-bold text-foreground">{Math.max(1, Math.ceil(elapsed / 60))} minutes</span>
+              </p>
+            </div>
+
+            <div className="relative w-full space-y-4 rounded-2xl bg-card p-6 shadow-card">
+              <div className="text-5xl font-black text-primary">
+                +<AnimatedXP target={summaryData?.xpEarned ?? 0} /> XP
+              </div>
+              <div className="grid grid-cols-3 gap-2 text-sm">
+                <div className="rounded-xl bg-muted p-3">
+                  <div className="text-muted-foreground">Base</div>
+                  <div className="text-lg font-bold">{summaryData?.baseXp}</div>
                 </div>
-                <div className="bg-muted rounded-xl p-3">
-                  <div className="text-muted-foreground">On-time bonus</div>
-                  <div className="font-bold text-lg text-warning">+50</div>
+                <div className="rounded-xl bg-muted p-3">
+                  <div className="text-muted-foreground">On-time</div>
+                  <div className="text-lg font-bold text-warning">+{summaryData?.onTimeBonus}</div>
+                </div>
+                <div className="rounded-xl bg-muted p-3">
+                  <div className="text-muted-foreground">Streak</div>
+                  <div className="text-lg font-bold text-primary">+{summaryData?.streakBonus}</div>
                 </div>
               </div>
             </div>
-            <Button
-              className="w-full gradient-primary text-primary-foreground font-bold py-4 text-base rounded-xl glow-primary"
-              onClick={handleConfirmComplete}
-            >
+
+            {summaryData && summaryData.newStreak > 0 && (
+              <div className="flex items-center gap-2 rounded-full border border-warning/40 bg-warning/10 px-5 py-2.5 animate-xp-bounce">
+                <Flame className="h-5 w-5 text-warning" />
+                <span className="text-base font-bold text-warning">
+                  {summaryData.newStreak} day streak!
+                </span>
+                <Flame className="h-5 w-5 text-warning" />
+              </div>
+            )}
+
+            <button className="relative w-full rounded-xl gradient-primary py-4 text-base font-bold text-white glow-primary" onClick={handleClaim}>
               Claim XP 🚀
-            </Button>
+            </button>
           </div>
         )}
       </div>
