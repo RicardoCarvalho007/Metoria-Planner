@@ -42,12 +42,10 @@ export default function LandingHero() {
 
           {/* Headline */}
           <div className="space-y-4 text-center">
-            <h1 className="text-4xl font-black leading-tight tracking-tight">
-              Study smarter.
+            <h1 className="text-5xl font-black leading-tight tracking-tight">
+              <span className="text-primary">Metoria</span>
               <br />
-              <span className="bg-gradient-to-r from-primary to-warning bg-clip-text text-transparent">
-                Score higher.
-              </span>
+              <span className="text-white">IB Planner</span>
             </h1>
             <p className="mx-auto max-w-xs text-base text-muted-foreground">
               The study planner built for IB Math students. Plan every topic, track your progress, and stay motivated.
