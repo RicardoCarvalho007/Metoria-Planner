@@ -36,6 +36,7 @@ export default async function HomePage() {
         .from("scheduled_sessions")
         .select("*")
         .eq("user_id", userId)
+        .eq("plan_id", plan.id)
         .eq("scheduled_date", today)
         .order("created_at"),
       supabase

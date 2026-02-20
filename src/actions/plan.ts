@@ -24,18 +24,35 @@ export async function createStudyPlan(data: {
     .eq("user_id", user.id)
     .eq("is_active", true);
 
-  const { data: plan, error: planError } = await supabase
+  const insertPayload: Record<string, unknown> = {
+    user_id: user.id,
+    course: data.course,
+    exam_date: data.examDate,
+    daily_hours: data.dailyHours,
+    is_active: true,
+  };
+
+  if (data.skippedTopicIds && data.skippedTopicIds.length > 0) {
+    insertPayload.skipped_topic_ids = data.skippedTopicIds;
+  }
+
+  let { data: plan, error: planError } = await supabase
     .from("study_plans")
-    .insert({
-      user_id: user.id,
-      course: data.course,
-      exam_date: data.examDate,
-      daily_hours: data.dailyHours,
-      skipped_topic_ids: data.skippedTopicIds ?? [],
-      is_active: true,
-    })
+    .insert(insertPayload)
     .select()
     .single();
+
+  // Retry without skipped_topic_ids if column doesn't exist yet
+  if (planError?.message?.includes("skipped_topic_ids")) {
+    delete insertPayload.skipped_topic_ids;
+    const retry = await supabase
+      .from("study_plans")
+      .insert(insertPayload)
+      .select()
+      .single();
+    plan = retry.data;
+    planError = retry.error;
+  }
 
   if (planError || !plan) {
     return { error: planError?.message ?? "Failed to create plan" };
@@ -101,13 +118,17 @@ export async function deactivateCurrentPlan() {
 
   if (!user) return { error: "Not authenticated" };
 
-  await supabase
+  const { error } = await supabase
     .from("study_plans")
     .update({ is_active: false })
     .eq("user_id", user.id)
     .eq("is_active", true);
 
+  if (error) return { error: error.message };
+
   revalidatePath("/");
+  revalidatePath("/onboarding");
+  revalidatePath("/plan");
   return { success: true };
 }
 

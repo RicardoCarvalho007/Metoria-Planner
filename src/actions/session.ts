@@ -165,12 +165,22 @@ export async function markMissedSessions() {
 
   if (!user) return;
 
+  const { data: plan } = await supabase
+    .from("study_plans")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("is_active", true)
+    .maybeSingle();
+
+  if (!plan) return;
+
   const today = new Date().toISOString().split("T")[0];
 
   await supabase
     .from("scheduled_sessions")
     .update({ status: "missed" })
     .eq("user_id", user.id)
+    .eq("plan_id", plan.id)
     .eq("status", "pending")
     .lt("scheduled_date", today);
 }
