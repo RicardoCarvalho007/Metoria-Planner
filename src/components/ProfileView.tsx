@@ -51,10 +51,16 @@ export default function ProfileView({
     router.refresh();
   };
 
+  const [resetting, setResetting] = useState(false);
+
   const handleResetPlan = async () => {
-    await deactivateCurrentPlan();
-    router.push("/onboarding");
-    router.refresh();
+    setResetting(true);
+    const res = await deactivateCurrentPlan();
+    if (res && "error" in res) {
+      setResetting(false);
+      return;
+    }
+    window.location.href = "/onboarding";
   };
 
   const daysUntilExam = plan
@@ -150,10 +156,11 @@ export default function ProfileView({
       <div className="space-y-2">
         <button
           onClick={handleResetPlan}
-          className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 text-left text-sm font-medium shadow-card transition-all hover:border-primary/30"
+          disabled={resetting}
+          className="flex w-full items-center gap-3 rounded-xl border border-border bg-card px-4 py-3.5 text-left text-sm font-medium shadow-card transition-all hover:border-primary/30 disabled:opacity-50"
         >
-          <RotateCcw className="h-4 w-4 text-muted-foreground" />
-          <span>New Study Plan</span>
+          <RotateCcw className={cn("h-4 w-4 text-muted-foreground", resetting && "animate-spin")} />
+          <span>{resetting ? "Resetting..." : "New Study Plan"}</span>
         </button>
         <button
           onClick={handleSignOut}
