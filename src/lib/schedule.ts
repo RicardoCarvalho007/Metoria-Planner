@@ -5,13 +5,18 @@ const MAX_SESSION_MINUTES = 50;
 const BREAK_MINUTES = 10;
 const BLOCK_MINUTES = MAX_SESSION_MINUTES + BREAK_MINUTES; // 60min per block
 
+export type TopicAssessmentConfidence = "known" | "needs_work" | "new";
+
 interface ScheduleInput {
   userId: string;
   planId: string;
   course: Course;
   examDate: string;
   dailyHours: Record<string, number>;
+  /** @deprecated use topicAssessments instead */
   skippedTopicIds?: string[];
+  /** Per-topic confidence: known = skip, needs_work = 50% hours, new = full hours */
+  topicAssessments?: Record<string, TopicAssessmentConfidence>;
 }
 
 interface SessionInsert {
@@ -33,12 +38,31 @@ interface ScheduleResult {
 }
 
 export function generateSchedule(input: ScheduleInput): ScheduleResult {
-  const { userId, planId, course, examDate, dailyHours, skippedTopicIds = [] } = input;
-  const skippedSet = new Set(skippedTopicIds);
+  const { userId, planId, course, examDate, dailyHours, skippedTopicIds = [], topicAssessments } = input;
 
   const allTopics = getTopicsForCourse(course);
-  const topics = allTopics.filter((t) => !skippedSet.has(t.id));
-  const totalTopicHours = topics.reduce((sum, t) => sum + t.hours, 0);
+  const topics: { id: string; name: string; hours: number }[] = [];
+  let totalTopicHours = 0;
+
+  if (topicAssessments) {
+    for (const t of allTopics) {
+      const conf = topicAssessments[t.id] ?? "new";
+      if (conf === "known") continue;
+      const multiplier = conf === "needs_work" ? 0.5 : 1;
+      const effectiveHours = t.hours * multiplier;
+      if (effectiveHours > 0) {
+        topics.push({ ...t, hours: effectiveHours });
+        totalTopicHours += effectiveHours;
+      }
+    }
+  } else {
+    const skippedSet = new Set(skippedTopicIds);
+    const filtered = allTopics.filter((t) => !skippedSet.has(t.id));
+    for (const t of filtered) {
+      topics.push({ ...t, hours: t.hours });
+      totalTopicHours += t.hours;
+    }
+  }
 
   const availableDays = buildAvailableDays(dailyHours, examDate);
   // Effective study minutes per day accounts for breaks within each hour
@@ -109,13 +133,12 @@ function buildAvailableDays(
 ): { date: string; hours: number }[] {
   const days: { date: string; hours: number }[] = [];
   const start = new Date();
-  start.setDate(start.getDate() + 1);
   start.setHours(0, 0, 0, 0);
   const end = new Date(examDate + "T23:59:59");
 
-  if (end <= start) return days;
+  if (end < start) return days;
 
-  const d = new Date(start);
+  const d = new Date(start.getTime());
   const MAX_DAYS = 365;
   let count = 0;
   while (d <= end && count < MAX_DAYS) {
@@ -132,6 +155,23 @@ function buildAvailableDays(
   }
 
   return days;
+}
+
+/** Find the first available study day on or after (fromDate + daysAhead). */
+export function findNextAvailableDate(
+  dailyHours: Record<string, number>,
+  examDate: string,
+  fromDate: string,
+  daysAhead: number
+): string | null {
+  const from = new Date(fromDate + "T12:00:00");
+  const target = new Date(from);
+  target.setDate(target.getDate() + daysAhead);
+  const targetStr = target.toISOString().split("T")[0];
+  const availableDays = buildAvailableDays(dailyHours, examDate);
+  const today = new Date().toISOString().split("T")[0];
+  const futureDays = availableDays.filter((d) => d.date >= today && d.date >= targetStr);
+  return futureDays.length > 0 ? futureDays[0].date : null;
 }
 
 export function redistributeMissedSessions(
@@ -186,5 +226,102 @@ export function redistributeMissedSessions(
     }
   }
 
+  return newSessions;
+}
+
+/** Spread missed sessions over the next 14 study days (gradual catch-up). */
+export function redistributeGradual(
+  missedSessions: { topic_id: string; topic_name: string; estimated_minutes: number }[],
+  futurePendingSessions: { scheduled_date: string; estimated_minutes: number }[],
+  dailyHours: Record<string, number>,
+  examDate: string,
+  userId: string,
+  planId: string
+): SessionInsert[] {
+  const availableDays = buildAvailableDays(dailyHours, examDate);
+  const today = new Date().toISOString().split("T")[0];
+  const futureDays = availableDays.filter((d) => d.date > today).slice(0, 14);
+  const usedMinutes: Record<string, number> = {};
+  for (const s of futurePendingSessions) {
+    usedMinutes[s.scheduled_date] = (usedMinutes[s.scheduled_date] ?? 0) + s.estimated_minutes;
+  }
+  const newSessions: SessionInsert[] = [];
+  let dayIdx = 0;
+  for (const missed of missedSessions) {
+    let remaining = missed.estimated_minutes;
+    while (remaining > 0 && dayIdx < futureDays.length) {
+      const day = futureDays[dayIdx];
+      const used = usedMinutes[day.date] ?? 0;
+      const capacity = effectiveStudyMinutes(day.hours) - used;
+      if (capacity <= 0) {
+        dayIdx++;
+        continue;
+      }
+      const allocated = Math.min(remaining, MAX_SESSION_MINUTES, capacity);
+      newSessions.push({
+        plan_id: planId,
+        user_id: userId,
+        topic_id: missed.topic_id,
+        topic_name: missed.topic_name,
+        scheduled_date: day.date,
+        estimated_minutes: allocated,
+        status: "pending",
+        xp_earned: 0,
+      });
+      usedMinutes[day.date] = used + allocated;
+      remaining -= allocated;
+      if (used + allocated >= effectiveStudyMinutes(day.hours)) dayIdx++;
+    }
+  }
+  return newSessions;
+}
+
+/** Put all missed sessions on the next weekend (Sat + Sun) only. */
+export function redistributeWeekend(
+  missedSessions: { topic_id: string; topic_name: string; estimated_minutes: number }[],
+  futurePendingSessions: { scheduled_date: string; estimated_minutes: number }[],
+  dailyHours: Record<string, number>,
+  examDate: string,
+  userId: string,
+  planId: string
+): SessionInsert[] {
+  const availableDays = buildAvailableDays(dailyHours, examDate);
+  const today = new Date().toISOString().split("T")[0];
+  const weekendDays = availableDays.filter((d) => {
+    const dayNum = new Date(d.date + "T12:00:00").getDay();
+    return d.date > today && (dayNum === 6 || dayNum === 0);
+  }).slice(0, 2);
+  const usedMinutes: Record<string, number> = {};
+  for (const s of futurePendingSessions) {
+    usedMinutes[s.scheduled_date] = (usedMinutes[s.scheduled_date] ?? 0) + s.estimated_minutes;
+  }
+  const newSessions: SessionInsert[] = [];
+  let dayIdx = 0;
+  for (const missed of missedSessions) {
+    let remaining = missed.estimated_minutes;
+    while (remaining > 0 && dayIdx < weekendDays.length) {
+      const day = weekendDays[dayIdx];
+      const used = usedMinutes[day.date] ?? 0;
+      const capacity = effectiveStudyMinutes(day.hours) - used;
+      if (capacity <= 0) {
+        dayIdx++;
+        continue;
+      }
+      const allocated = Math.min(remaining, MAX_SESSION_MINUTES, capacity);
+      newSessions.push({
+        plan_id: planId,
+        user_id: userId,
+        topic_id: missed.topic_id,
+        topic_name: missed.topic_name,
+        scheduled_date: day.date,
+        estimated_minutes: allocated,
+        status: "pending",
+        xp_earned: 0,
+      });
+      usedMinutes[day.date] = used + allocated;
+      remaining -= allocated;
+      if (used + allocated >= effectiveStudyMinutes(day.hours)) dayIdx++;
+    }
+  }
   return newSessions;
 }

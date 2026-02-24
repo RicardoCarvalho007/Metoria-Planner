@@ -26,7 +26,7 @@ export default async function ProfilePage() {
       supabase.from("badge_definitions").select("*"),
       supabase
         .from("scheduled_sessions")
-        .select("topic_id")
+        .select("topic_id, plan_id")
         .eq("user_id", userId)
         .eq("status", "completed"),
       supabase
@@ -36,12 +36,37 @@ export default async function ProfilePage() {
     ]);
 
   const plan = planRes.data;
-  const uniqueCompleted = new Set(completedRes.data?.map((s) => s.topic_id));
+  const completedData = (completedRes.data ?? []) as { topic_id: string; plan_id: string }[];
+  const completedForPlan = plan ? completedData.filter((s) => s.plan_id === plan.id) : completedData;
+  const uniqueCompleted = new Set(completedForPlan.map((s) => s.topic_id));
   const totalTopics = plan
     ? getTopicsForCourse(plan.course as Course).length
     : 0;
-  const totalMinutes =
-    studyTimeRes.data?.reduce((sum, s) => sum + s.duration_minutes, 0) ?? 0;
+
+  let totalMinutes = (studyTimeRes.data ?? []).reduce(
+    (sum: number, s: { duration_minutes: number }) => sum + s.duration_minutes,
+    0
+  );
+  if (plan) {
+    const { data: completedSessionRows } = await supabase
+      .from("scheduled_sessions")
+      .select("id")
+      .eq("plan_id", plan.id)
+      .eq("status", "completed");
+    const completedIds = (completedSessionRows ?? []).map((r: { id: string }) => r.id);
+    if (completedIds.length > 0) {
+      const { data: sessionsForPlan } = await supabase
+        .from("study_sessions")
+        .select("duration_minutes")
+        .in("scheduled_session_id", completedIds);
+      totalMinutes = (sessionsForPlan ?? []).reduce(
+        (sum: number, s: { duration_minutes: number }) => sum + s.duration_minutes,
+        0
+      );
+    } else {
+      totalMinutes = 0;
+    }
+  }
 
   const profile = profileRes.data;
   if (!profile) redirect("/login");

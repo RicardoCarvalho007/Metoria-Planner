@@ -102,7 +102,9 @@ export default function TimerModal({ session, onClose, onComplete }: Props) {
   const [running, setRunning] = useState(false);
   const [elapsed, setElapsed] = useState(0);
   const [showSummary, setShowSummary] = useState(false);
+  const [showConfidenceCheck, setShowConfidenceCheck] = useState(false);
   const [showQuitConfirm, setShowQuitConfirm] = useState(false);
+  const completedMinsRef = useRef(0);
   const [summaryData, setSummaryData] = useState<{
     xpEarned: number;
     baseXp: number;
@@ -155,12 +157,17 @@ export default function TimerModal({ session, onClose, onComplete }: Props) {
     setRunning(true);
   };
 
-  const handleTimerComplete = async () => {
+  const handleTimerComplete = () => {
     if (completingRef.current) return;
     completingRef.current = true;
-    setSubmitting(true);
     const mins = Math.max(1, Math.ceil(elapsedRef.current / 60));
-    const result = await completeSession(session.id, mins);
+    completedMinsRef.current = mins;
+    setShowConfidenceCheck(true);
+  };
+
+  const handleConfidenceSelect = async (confidence: "low" | "medium" | "high") => {
+    setSubmitting(true);
+    const result = await completeSession(session.id, completedMinsRef.current, confidence);
 
     if ("error" in result) {
       setSubmitting(false);
@@ -175,6 +182,7 @@ export default function TimerModal({ session, onClose, onComplete }: Props) {
       isReview: result.isReview,
       newStreak: result.newStreak,
     });
+    setShowConfidenceCheck(false);
     setShowSummary(true);
     setSubmitting(false);
   };
@@ -270,7 +278,53 @@ export default function TimerModal({ session, onClose, onComplete }: Props) {
           </div>
         )}
 
-        {!showSummary ? (
+        {/* ── Confidence check (after timer, before XP) ── */}
+        {showConfidenceCheck && (
+          <div className="flex flex-1 flex-col justify-center space-y-6 px-2">
+            <div className="text-center space-y-2">
+              <h3 className="text-xl font-black">How confident do you feel?</h3>
+              <p className="text-sm text-muted-foreground">This helps us schedule reviews and track your progress.</p>
+            </div>
+            <div className="space-y-3">
+              <button
+                onClick={() => handleConfidenceSelect("low")}
+                disabled={submitting}
+                className="flex w-full items-center gap-4 rounded-xl border-2 border-destructive/50 bg-destructive/10 px-4 py-4 text-left transition-all hover:bg-destructive/20 disabled:opacity-50"
+              >
+                <span className="text-3xl">😕</span>
+                <div>
+                  <p className="font-bold text-foreground">Not confident</p>
+                  <p className="text-xs text-muted-foreground">We&apos;ll schedule a short review in 3 days</p>
+                </div>
+              </button>
+              <button
+                onClick={() => handleConfidenceSelect("medium")}
+                disabled={submitting}
+                className="flex w-full items-center gap-4 rounded-xl border-2 border-warning/50 bg-warning/10 px-4 py-4 text-left transition-all hover:bg-warning/20 disabled:opacity-50"
+              >
+                <span className="text-3xl">😐</span>
+                <div>
+                  <p className="font-bold text-foreground">Getting there</p>
+                  <p className="text-xs text-muted-foreground">We&apos;ll add spaced review sessions</p>
+                </div>
+              </button>
+              <button
+                onClick={() => handleConfidenceSelect("high")}
+                disabled={submitting}
+                className="flex w-full items-center gap-4 rounded-xl border-2 border-success/50 bg-success/10 px-4 py-4 text-left transition-all hover:bg-success/20 disabled:opacity-50"
+              >
+                <span className="text-3xl">😊</span>
+                <div>
+                  <p className="font-bold text-foreground">Got it</p>
+                  <p className="text-xs text-muted-foreground">We&apos;ll mark this topic as mastered</p>
+                </div>
+              </button>
+            </div>
+            {submitting && <p className="text-center text-sm text-muted-foreground">Saving...</p>}
+          </div>
+        )}
+
+        {!showConfidenceCheck && !showSummary ? (
           <>
             {!started && (
               <div className="mb-6 flex gap-2 rounded-xl bg-muted p-1">
@@ -345,7 +399,7 @@ export default function TimerModal({ session, onClose, onComplete }: Props) {
               )}
             </div>
           </>
-        ) : (
+        ) : showSummary ? (
           /* ── Celebration Summary ── */
           <div className="relative flex flex-1 flex-col items-center justify-center space-y-6 text-center overflow-hidden">
             <div className="pointer-events-none absolute inset-0">
@@ -397,7 +451,7 @@ export default function TimerModal({ session, onClose, onComplete }: Props) {
               Claim XP 🚀
             </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   );

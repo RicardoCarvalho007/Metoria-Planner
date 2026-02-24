@@ -6,6 +6,13 @@ export interface SubTopic {
   learningObjectives: string[];
 }
 
+export interface SessionGuide {
+  key_concepts: string[];
+  practice_tasks: string[];
+  self_check: string[];
+  ib_exam_tips: string[];
+}
+
 export interface Topic {
   id: string;
   name: string;
@@ -503,4 +510,20 @@ export function getChapterForTopic(topicId: string): string {
 export function getSubTopicsForTopic(topicId: string): SubTopic[] {
   const topic = SYLLABUS.find((t) => t.id === topicId);
   return topic?.subTopics ?? [];
+}
+
+import { SESSION_GUIDES } from "@/data/sessionGuides";
+
+export function getSessionGuide(topicId: string): SessionGuide | null {
+  const guide = SESSION_GUIDES[topicId];
+  if (guide) return guide;
+  const topic = SYLLABUS.find((t) => t.id === topicId);
+  if (!topic) return null;
+  const concepts = topic.subTopics.flatMap((st) => st.learningObjectives).slice(0, 5);
+  return {
+    key_concepts: concepts.length ? concepts : [topic.name + ": review the sub-topics and objectives."],
+    practice_tasks: ["Practice problems from your textbook for this topic.", "Try past paper questions on this area."],
+    self_check: ["Can I explain the main ideas?", "Can I do a typical exam question without help?"],
+    ib_exam_tips: ["Review the learning objectives in the syllabus.", "Check GDC usage if applicable."],
+  };
 }

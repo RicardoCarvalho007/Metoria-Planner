@@ -1,7 +1,6 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
 import {
   ChevronRight, ChevronDown, ChevronUp, Calendar, Clock,
   CheckCircle2, Sparkles, BookOpen,
@@ -26,7 +25,28 @@ const DAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"] as const;
 const DAY_LABELS: Record<string, string> = {
   mon: "Mon", tue: "Tue", wed: "Wed", thu: "Thu", fri: "Fri", sat: "Sat", sun: "Sun",
 };
-const HOUR_OPTIONS = [1, 2, 3, 4];
+
+type TimeSlot = { start: string; end: string };
+function slotMinutes(slot: TimeSlot): number {
+  const [sh, sm] = slot.start.split(":").map(Number);
+  const [eh, em] = slot.end.split(":").map(Number);
+  return (eh * 60 + em) - (sh * 60 + sm);
+}
+function slotsToWeeklyHours(slots: Record<string, TimeSlot[]>): number {
+  return DAYS.reduce(
+    (sum, day) =>
+      sum + (slots[day] ?? []).reduce((s, slot) => s + slotMinutes(slot) / 60, 0),
+    0
+  );
+}
+function slotsToDailyHours(slots: Record<string, TimeSlot[]>): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const day of DAYS) {
+    const list = slots[day] ?? [];
+    out[day] = Math.round(list.reduce((s, slot) => s + slotMinutes(slot) / 60, 0) * 10) / 10;
+  }
+  return out;
+}
 
 interface PlanRevealData {
   totalSessions: number;
@@ -38,15 +58,22 @@ interface PlanRevealData {
 }
 
 export default function OnboardingFlow() {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
   const [step, setStep] = useState<Step>("welcome");
   const [course, setCourse] = useState<Course | null>(null);
   const [examDate, setExamDate] = useState("");
-  const [availability, setAvailability] = useState<Record<string, number>>({
-    mon: 2, tue: 2, wed: 0, thu: 2, fri: 1, sat: 3, sun: 0,
-  });
-  const [skippedTopics, setSkippedTopics] = useState<Set<string>>(new Set());
+  const defaultSlots: Record<string, TimeSlot[]> = {
+    mon: [{ start: "09:00", end: "11:00" }],
+    tue: [{ start: "09:00", end: "11:00" }],
+    wed: [],
+    thu: [{ start: "09:00", end: "11:00" }],
+    fri: [{ start: "09:00", end: "11:00" }],
+    sat: [{ start: "09:00", end: "13:00" }],
+    sun: [],
+  };
+  const [dailySlots, setDailySlots] = useState<Record<string, TimeSlot[]>>(defaultSlots);
+  type TopicConfidence = "known" | "needs_work" | "new";
+  const [topicAssessments, setTopicAssessments] = useState<Record<string, TopicConfidence>>({});
   const [expandedChapters, setExpandedChapters] = useState<Set<string>>(new Set());
   const [error, setError] = useState<string | null>(null);
   const [revealData, setRevealData] = useState<PlanRevealData | null>(null);
@@ -55,27 +82,46 @@ export default function OnboardingFlow() {
   const daysUntilExam = examDate
     ? Math.max(0, Math.ceil((new Date(examDate).getTime() - Date.now()) / 86400000))
     : 0;
-  const totalWeeklyHours = Object.values(availability).reduce((a, b) => a + b, 0);
+  const totalWeeklyHours = slotsToWeeklyHours(dailySlots);
+  const dailyHoursFromSlots = slotsToDailyHours(dailySlots);
 
   const courseTopics = course ? getTopicsForCourse(course) : [];
-  const topicCount = courseTopics.length;
-  const activeTopicCount = topicCount - skippedTopics.size;
+  const activeTopicCount = courseTopics.filter((t) => (topicAssessments[t.id] ?? "new") !== "known").length;
 
   const toggleDay = (day: string) => {
-    setAvailability((prev) => ({ ...prev, [day]: prev[day] > 0 ? 0 : 2 }));
-  };
-
-  const setHours = (day: string, hours: number) => {
-    setAvailability((prev) => ({ ...prev, [day]: hours }));
-  };
-
-  const toggleSkipTopic = (topicId: string) => {
-    setSkippedTopics((prev) => {
-      const next = new Set(prev);
-      if (next.has(topicId)) next.delete(topicId);
-      else next.add(topicId);
-      return next;
+    setDailySlots((prev) => {
+      const list = prev[day] ?? [];
+      if (list.length > 0) return { ...prev, [day]: [] };
+      return { ...prev, [day]: [{ start: "09:00", end: "11:00" }] };
     });
+  };
+
+  const addSlot = (day: string) => {
+    setDailySlots((prev) => ({
+      ...prev,
+      [day]: [...(prev[day] ?? []), { start: "14:00", end: "16:00" }],
+    }));
+  };
+
+  const removeSlot = (day: string, index: number) => {
+    setDailySlots((prev) => {
+      const list = [...(prev[day] ?? [])];
+      list.splice(index, 1);
+      return { ...prev, [day]: list };
+    });
+  };
+
+  const setSlotTime = (day: string, index: number, field: "start" | "end", value: string) => {
+    setDailySlots((prev) => {
+      const list = [...(prev[day] ?? [])];
+      if (!list[index]) return prev;
+      list[index] = { ...list[index], [field]: value };
+      return { ...prev, [day]: list };
+    });
+  };
+
+  const setTopicConfidence = (topicId: string, confidence: TopicConfidence) => {
+    setTopicAssessments((prev) => ({ ...prev, [topicId]: confidence }));
   };
 
   const toggleChapter = (chKey: string) => {
@@ -87,17 +133,11 @@ export default function OnboardingFlow() {
     });
   };
 
-  const toggleSkipChapter = (chKey: string) => {
-    const chTopicIds = courseTopics
-      .filter((t) => getChapterForTopic(t.id) === chKey)
-      .map((t) => t.id);
-    const allSkipped = chTopicIds.every((id) => skippedTopics.has(id));
-    setSkippedTopics((prev) => {
-      const next = new Set(prev);
-      for (const id of chTopicIds) {
-        if (allSkipped) next.delete(id);
-        else next.add(id);
-      }
+  const setChapterAllConfidence = (chKey: string, confidence: TopicConfidence) => {
+    const chTopics = courseTopics.filter((t) => getChapterForTopic(t.id) === chKey);
+    setTopicAssessments((prev) => {
+      const next = { ...prev };
+      for (const t of chTopics) next[t.id] = confidence;
       return next;
     });
   };
@@ -112,18 +152,25 @@ export default function OnboardingFlow() {
       setError("Set at least one study day with hours > 0.");
       return;
     }
-    if (skippedTopics.size >= courseTopics.length) {
-      setError("You can't skip all topics. Unmark at least one.");
+    const withKnown = courseTopics.filter((t) => (topicAssessments[t.id] ?? "new") === "known").length;
+    if (withKnown >= courseTopics.length) {
+      setError("You can't mark all topics as known. Keep at least one to study.");
       return;
     }
     setError(null);
+
+    const assessments: Record<string, string> = {};
+    courseTopics.forEach((t) => {
+      assessments[t.id] = topicAssessments[t.id] ?? "new";
+    });
 
     startTransition(async () => {
       const result = await createStudyPlan({
         course,
         examDate,
-        dailyHours: availability,
-        skippedTopicIds: Array.from(skippedTopics),
+        dailyHours: dailyHoursFromSlots,
+        dailySlots,
+        topicAssessments: assessments,
       });
       if ("error" in result) {
         setError(result.error as string);
@@ -142,8 +189,7 @@ export default function OnboardingFlow() {
   };
 
   const handleFinish = () => {
-    router.push("/");
-    router.refresh();
+    window.location.href = "/";
   };
 
   const formatDateShort = (dateStr: string) => {
@@ -212,7 +258,7 @@ export default function OnboardingFlow() {
               {COURSE_OPTIONS.map((opt) => (
                 <button
                   key={opt.course}
-                  onClick={() => { setCourse(opt.course); setSkippedTopics(new Set()); }}
+                  onClick={() => { setCourse(opt.course); setTopicAssessments({}); }}
                   className={cn(
                     "rounded-xl border-2 p-4 text-left transition-all",
                     course === opt.course
@@ -237,84 +283,107 @@ export default function OnboardingFlow() {
           </div>
         )}
 
-        {/* ── Topic Selection (skip known) ── */}
+        {/* ── Topic Self-Assessment ── */}
         {step === "topics" && course && (
           <div className="space-y-5">
             <div className="space-y-1">
-              <h2 className="text-2xl font-bold">Topics you already know</h2>
+              <h2 className="text-2xl font-bold">Rate your topics</h2>
               <p className="text-sm text-muted-foreground">
-                Check any topics you&apos;ve already mastered — we&apos;ll skip them in your plan.
+                Already know it = skip. Need work = 50% time. Haven&apos;t started = full time.
               </p>
             </div>
             <div className="flex items-center gap-2 rounded-xl bg-card px-4 py-3 shadow-card">
               <BookOpen className="h-4 w-4 text-primary" />
               <span className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{activeTopicCount}</span> of {topicCount} topics selected
+                <span className="font-semibold text-foreground">{activeTopicCount}</span> topics to study
               </span>
             </div>
+            <div className="flex gap-2 rounded-xl bg-muted/50 px-3 py-2 text-xs">
+              <span className="flex items-center gap-1"><span className="rounded bg-success/20 px-1.5 py-0.5 text-success">✓ Known</span> skip</span>
+              <span className="flex items-center gap-1"><span className="rounded bg-warning/20 px-1.5 py-0.5 text-warning">📖 Need work</span> 50%</span>
+              <span className="flex items-center gap-1"><span className="rounded bg-destructive/20 px-1.5 py-0.5 text-destructive">🔴 New</span> full</span>
+            </div>
 
-            <div className="max-h-[55vh] space-y-2 overflow-y-auto pr-1">
+            <div className="max-h-[50vh] space-y-2 overflow-y-auto pr-1">
               {Object.entries(CHAPTERS).map(([chKey, chLabel]) => {
                 const chTopics = courseTopics.filter((t) => getChapterForTopic(t.id) === chKey);
                 if (chTopics.length === 0) return null;
-                const skippedCount = chTopics.filter((t) => skippedTopics.has(t.id)).length;
-                const allSkipped = skippedCount === chTopics.length;
+                const knownCount = chTopics.filter((t) => (topicAssessments[t.id] ?? "new") === "known").length;
                 const isExpanded = expandedChapters.has(chKey);
 
                 return (
                   <div key={chKey} className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
                     <div className="flex items-center gap-2 px-4 py-3">
                       <button
-                        onClick={() => toggleSkipChapter(chKey)}
-                        className={cn(
-                          "flex h-5 w-5 flex-shrink-0 items-center justify-center rounded border-2 transition-all",
-                          allSkipped
-                            ? "border-primary bg-primary"
-                            : skippedCount > 0
-                            ? "border-primary/50 bg-primary/20"
-                            : "border-muted"
-                        )}
-                      >
-                        {(allSkipped || skippedCount > 0) && (
-                          <span className="text-xs font-bold text-white">{allSkipped ? "✓" : "−"}</span>
-                        )}
-                      </button>
-                      <button
                         className="flex flex-1 items-center justify-between"
                         onClick={() => toggleChapter(chKey)}
                       >
                         <span className="text-sm font-bold">
                           {chKey}. {chLabel}
-                          <span className="ml-2 text-xs font-normal text-muted-foreground">
-                            {skippedCount > 0 && `${skippedCount} skipped`}
-                          </span>
+                          {knownCount > 0 && (
+                            <span className="ml-2 text-xs font-normal text-muted-foreground">
+                              {knownCount} known
+                            </span>
+                          )}
                         </span>
                         {isExpanded ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                       </button>
+                      {isExpanded && (
+                        <div className="flex gap-1">
+                          {(["new", "needs_work", "known"] as const).map((conf) => (
+                            <button
+                              key={conf}
+                              onClick={() => setChapterAllConfidence(chKey, conf)}
+                              className={cn(
+                                "rounded px-2 py-0.5 text-[10px] font-medium",
+                                conf === "known" && "bg-success/20 text-success",
+                                conf === "needs_work" && "bg-warning/20 text-warning",
+                                conf === "new" && "bg-destructive/20 text-destructive"
+                              )}
+                            >
+                              {conf === "known" ? "✓" : conf === "needs_work" ? "📖" : "🔴"} All
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {isExpanded && (
                       <div className="border-t border-border px-4 py-2 space-y-1">
                         {chTopics.map((t) => {
-                          const isSkipped = skippedTopics.has(t.id);
+                          const conf = topicAssessments[t.id] ?? "new";
                           return (
-                            <button
+                            <div
                               key={t.id}
-                              onClick={() => toggleSkipTopic(t.id)}
-                              className="flex w-full items-center gap-3 rounded-lg px-2 py-2 text-left transition-all hover:bg-muted/50"
+                              className="flex w-full items-center gap-2 rounded-lg px-2 py-2"
                             >
-                              <div className={cn(
-                                "flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border-2 transition-all",
-                                isSkipped ? "border-primary bg-primary" : "border-muted"
-                              )}>
-                                {isSkipped && <span className="text-[10px] font-bold text-white">✓</span>}
-                              </div>
                               <span className={cn(
-                                "text-xs",
-                                isSkipped ? "text-muted-foreground line-through" : "text-foreground"
+                                "text-xs min-w-0 flex-1 truncate",
+                                conf === "known" && "text-muted-foreground line-through"
                               )}>
                                 {t.name}
                               </span>
-                            </button>
+                              <div className="flex gap-0.5 flex-shrink-0">
+                                {(["new", "needs_work", "known"] as const).map((c) => (
+                                  <button
+                                    key={c}
+                                    onClick={() => setTopicConfidence(t.id, c)}
+                                    title={c === "known" ? "Already know it" : c === "needs_work" ? "Need work" : "Haven't started"}
+                                    className={cn(
+                                      "rounded p-1.5 text-sm transition-all",
+                                      conf === c
+                                        ? c === "known"
+                                          ? "bg-success text-white"
+                                          : c === "needs_work"
+                                          ? "bg-warning text-white"
+                                          : "bg-destructive text-white"
+                                        : "bg-muted/50 text-muted-foreground hover:bg-muted"
+                                    )}
+                                  >
+                                    {c === "known" ? "✓" : c === "needs_work" ? "📖" : "🔴"}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           );
                         })}
                       </div>
@@ -369,16 +438,19 @@ export default function OnboardingFlow() {
           </div>
         )}
 
-        {/* ── Weekly Availability ── */}
+        {/* ── Weekly Availability (time slots per day) ── */}
         {step === "availability" && (
           <div className="space-y-6">
             <div className="space-y-1">
-              <h2 className="text-2xl font-bold">Weekly availability</h2>
-              <p className="text-sm text-muted-foreground">Tap a day to toggle it, then set hours</p>
+              <h2 className="text-2xl font-bold">When can you study?</h2>
+              <p className="text-sm text-muted-foreground">
+                Pick each day you’re free, then set the exact time window (e.g. 9:00–11:00).
+              </p>
             </div>
             <div className="space-y-3">
               {DAYS.map((day) => {
-                const isActive = availability[day] > 0;
+                const slots = dailySlots[day] ?? [];
+                const isActive = slots.length > 0;
                 return (
                   <div
                     key={day}
@@ -388,6 +460,7 @@ export default function OnboardingFlow() {
                     )}
                   >
                     <button
+                      type="button"
                       className="flex w-full items-center justify-between px-4 py-3"
                       onClick={() => toggleDay(day)}
                     >
@@ -404,21 +477,48 @@ export default function OnboardingFlow() {
                       </div>
                     </button>
                     {isActive && (
-                      <div className="flex gap-2 px-4 pb-3">
-                        {HOUR_OPTIONS.map((h) => (
-                          <button
-                            key={h}
-                            onClick={() => setHours(day, h)}
-                            className={cn(
-                              "flex-1 rounded-lg py-1.5 text-sm font-medium transition-all",
-                              availability[day] === h
-                                ? "gradient-primary text-white"
-                                : "bg-muted text-muted-foreground hover:bg-muted/80"
-                            )}
+                      <div className="space-y-2 px-4 pb-3">
+                        {slots.map((slot, idx) => (
+                          <div
+                            key={`${day}-${idx}`}
+                            className="flex flex-wrap items-center gap-2 rounded-lg bg-card/80 p-2"
                           >
-                            {h}h
-                          </button>
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              From
+                              <input
+                                type="time"
+                                value={slot.start}
+                                onChange={(e) => setSlotTime(day, idx, "start", e.target.value)}
+                                className="rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                              />
+                            </label>
+                            <label className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                              To
+                              <input
+                                type="time"
+                                value={slot.end}
+                                onChange={(e) => setSlotTime(day, idx, "end", e.target.value)}
+                                className="rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+                              />
+                            </label>
+                            {slots.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => removeSlot(day, idx)}
+                                className="rounded px-2 py-1 text-xs text-destructive hover:bg-destructive/10"
+                              >
+                                Remove
+                              </button>
+                            )}
+                          </div>
                         ))}
+                        <button
+                          type="button"
+                          onClick={() => addSlot(day)}
+                          className="text-sm font-medium text-primary hover:underline"
+                        >
+                          + Add another time block
+                        </button>
                       </div>
                     )}
                   </div>
@@ -426,9 +526,9 @@ export default function OnboardingFlow() {
               })}
             </div>
             <div className="flex items-center gap-2 rounded-xl bg-card px-4 py-3">
-              <Clock className="h-4 w-4 text-primary" />
+              <Clock className="h-4 w-4 shrink-0 text-primary" />
               <span className="text-sm text-muted-foreground">
-                <span className="font-semibold text-foreground">{totalWeeklyHours}h</span> per week
+                <span className="font-semibold text-foreground">{totalWeeklyHours.toFixed(1)}h</span> per week
                 <span className="ml-2 text-xs">(50min study + 10min break per hour)</span>
               </span>
             </div>
@@ -489,10 +589,13 @@ export default function OnboardingFlow() {
               ))}
             </div>
 
-            {skippedTopics.size > 0 && (
+            {courseTopics.filter((t) => (topicAssessments[t.id] ?? "new") === "known").length > 0 && (
               <div className="flex items-center gap-2 rounded-xl bg-muted px-4 py-3 text-xs text-muted-foreground">
                 <CheckCircle2 className="h-4 w-4 text-success" />
-                <span>{skippedTopics.size} topic{skippedTopics.size > 1 ? "s" : ""} skipped (already known)</span>
+                <span>
+                  {courseTopics.filter((t) => (topicAssessments[t.id] ?? "new") === "known").length} topic
+                  {courseTopics.filter((t) => (topicAssessments[t.id] ?? "new") === "known").length > 1 ? "s" : ""} marked as known
+                </span>
               </div>
             )}
 

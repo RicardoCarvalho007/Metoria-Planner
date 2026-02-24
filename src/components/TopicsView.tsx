@@ -57,7 +57,7 @@ export default function TopicsView({ topics, completedTopicIds, notes, uploads }
           const isExpanded = expandedChapters.has(chKey);
 
           return (
-            <div key={chKey} className="rounded-xl border border-border bg-card shadow-card overflow-hidden">
+            <div key={chKey} id={`chapter-${chKey}`} className="rounded-xl border border-border bg-card shadow-card overflow-hidden scroll-mt-24">
               <button
                 onClick={() => toggleChapter(chKey)}
                 className="flex w-full items-center justify-between px-4 py-3"

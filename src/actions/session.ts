@@ -3,11 +3,13 @@
 import { createClient } from "@/lib/supabase/server";
 import { calculateXp, calculateStreak, getNewBadges } from "@/lib/xp";
 import { getTopicsForCourse, type Course } from "@/data/syllabus";
+import { findNextAvailableDate } from "@/lib/schedule";
 import { revalidatePath } from "next/cache";
 
 export async function completeSession(
   scheduledSessionId: string,
-  durationMinutes: number
+  durationMinutes: number,
+  confidence?: "low" | "medium" | "high"
 ) {
   const supabase = await createClient();
   const {
@@ -80,15 +82,94 @@ export async function completeSession(
 
   if (updateError) return { error: "Failed to save session. Please try again." };
 
-  // Create study session
-  await supabase.from("study_sessions").insert({
+  // Create study session (with optional confidence)
+  const sessionInsert: Record<string, unknown> = {
     user_id: user.id,
     scheduled_session_id: scheduledSessionId,
     duration_minutes: durationMinutes,
     started_at: new Date(now.getTime() - durationMinutes * 60000).toISOString(),
     ended_at: now.toISOString(),
     xp_earned: xp.total,
-  });
+  };
+  if (confidence) sessionInsert.session_confidence = confidence;
+  await supabase.from("study_sessions").insert(sessionInsert);
+
+  // Low confidence: schedule recovery review 3 days later
+  if (confidence === "low") {
+    const planId = session.plan_id;
+    const threeDaysLater = new Date(today);
+    threeDaysLater.setDate(threeDaysLater.getDate() + 3);
+    const reviewDate = threeDaysLater.toISOString().split("T")[0];
+    await supabase.from("scheduled_sessions").insert({
+      plan_id: planId,
+      user_id: user.id,
+      topic_id: session.topic_id,
+      topic_name: `Review: ${session.topic_name.replace(/^Review: /i, "")}`,
+      scheduled_date: reviewDate,
+      estimated_minutes: 30,
+      status: "pending",
+      xp_earned: 0,
+      session_type: "recovery",
+    });
+  }
+
+  // High confidence: mark topic as known in topic_assessments
+  if (confidence === "high") {
+    const planId = session.plan_id;
+    await supabase.from("topic_assessments").upsert(
+      {
+        user_id: user.id,
+        plan_id: planId,
+        topic_id: session.topic_id,
+        confidence: "known",
+        updated_at: now.toISOString(),
+      },
+      { onConflict: "plan_id,topic_id" }
+    );
+  }
+
+  // Medium or high confidence: schedule spaced repetition reviews at day+7 and day+21
+  if (confidence === "medium" || confidence === "high") {
+    const { data: plan } = await supabase
+      .from("study_plans")
+      .select("exam_date, daily_hours")
+      .eq("id", session.plan_id)
+      .single();
+    if (plan) {
+      const dailyHours = plan.daily_hours as Record<string, number>;
+      const examDate = plan.exam_date as string;
+      const baseTopicName = session.topic_name.replace(/^Review: /i, "").trim();
+      const reviewName = `Review: ${baseTopicName}`;
+      const date7 = findNextAvailableDate(dailyHours, examDate, today, 7);
+      const date21 = findNextAvailableDate(dailyHours, examDate, today, 21);
+      if (date7) {
+        await supabase.from("scheduled_sessions").insert({
+          plan_id: session.plan_id,
+          user_id: user.id,
+          topic_id: session.topic_id,
+          topic_name: reviewName,
+          scheduled_date: date7,
+          estimated_minutes: 15,
+          status: "pending",
+          xp_earned: 0,
+          session_type: "review",
+        });
+      }
+      if (date21) {
+        await supabase.from("scheduled_sessions").insert({
+          plan_id: session.plan_id,
+          user_id: user.id,
+          topic_id: session.topic_id,
+          topic_name: reviewName,
+          scheduled_date: date21,
+          estimated_minutes: 10,
+          status: "pending",
+          xp_earned: 0,
+          session_type: "review",
+        });
+      }
+    }
+  }
 
   // Update profile
   await supabase
