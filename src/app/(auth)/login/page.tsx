@@ -116,6 +116,11 @@ export default function LoginPage() {
               {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
             </button>
           </div>
+          <div className="flex justify-end">
+            <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-primary">
+              Forgot password?
+            </Link>
+          </div>
           <button
             type="submit"
             disabled={loading}
