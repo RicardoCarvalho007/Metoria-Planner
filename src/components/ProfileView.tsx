@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import { createClient } from "@/lib/supabase/client";
 import {
   Calendar, Flame, Zap, BookOpen, Trophy, LogOut,
@@ -73,9 +74,14 @@ export default function ProfileView({
   const studyHours = Math.round(totalStudyMinutes / 60);
 
   return (
-    <div className="flex flex-col gap-4 page-padding py-5 animate-fade-up">
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.3 }}
+      className="flex flex-col gap-4 page-padding py-5"
+    >
       {/* Profile header */}
-      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 shadow-card">
+      <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-gradient-to-b from-primary/5 to-card p-6 shadow-card">
         {profile.avatar_url ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
@@ -126,15 +132,61 @@ export default function ProfileView({
           { icon: <BookOpen className="h-5 w-5 text-success" />, label: "Topics Done", value: `${completedTopicCount}/${totalTopicCount}`, bg: "bg-success/10" },
           { icon: <Clock className="h-5 w-5 text-secondary" />, label: "Study Time", value: `${studyHours}h`, bg: "bg-secondary/10" },
         ].map((s) => (
-          <div key={s.label} className="rounded-xl border border-border bg-card p-4 shadow-card">
+          <motion.div
+            key={s.label}
+            whileHover={{ y: -2 }}
+            transition={{ duration: 0.15 }}
+            className="rounded-xl border border-border bg-card p-4 shadow-card transition-all hover:shadow-md hover:border-primary/20"
+          >
             <div className={cn("mb-2 flex h-9 w-9 items-center justify-center rounded-xl", s.bg)}>
               {s.icon}
             </div>
             <div className="text-lg font-bold">{s.value}</div>
             <div className="text-xs text-muted-foreground">{s.label}</div>
-          </div>
+          </motion.div>
         ))}
       </div>
+
+      {/* Syllabus progress chart */}
+      {totalTopicCount > 0 && (() => {
+        const pct = Math.round((completedTopicCount / totalTopicCount) * 100);
+        const r = 40;
+        const circumference = 2 * Math.PI * r;
+        return (
+          <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+            <h2 className="mb-1 text-base font-bold">Syllabus Progress</h2>
+            <p className="mb-4 text-xs text-muted-foreground">
+              {completedTopicCount} of {totalTopicCount} topics completed
+            </p>
+            <div className="flex items-center gap-6">
+              <div className="relative h-24 w-24 flex-shrink-0">
+                <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
+                  <circle cx="50" cy="50" r={r} fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
+                  <circle
+                    cx="50" cy="50" r={r} fill="none" stroke="hsl(var(--primary))" strokeWidth="8"
+                    strokeLinecap="round" strokeDasharray={circumference}
+                    strokeDashoffset={circumference * (1 - pct / 100)}
+                    className="transition-all duration-700"
+                  />
+                </svg>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-xl font-black">{pct}%</span>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="h-2.5 w-2.5 rounded-full bg-primary" />
+                  <span className="text-foreground font-medium">{completedTopicCount} done</span>
+                </div>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="h-2.5 w-2.5 rounded-full bg-muted border border-border" />
+                  <span className="text-muted-foreground">{totalTopicCount - completedTopicCount} remaining</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Badges */}
       <div className="rounded-xl border border-border bg-card p-4 shadow-card">
@@ -153,7 +205,7 @@ export default function ProfileView({
                 key={bd.id}
                 className={cn(
                   "flex flex-col items-center gap-1.5 rounded-xl p-3 text-center transition-all",
-                  earned ? "bg-primary/10 border border-primary/30" : "bg-muted/50 opacity-50"
+                  earned ? "bg-primary/10 border border-primary/30" : "bg-muted/50 opacity-50 hover:opacity-70 transition-opacity"
                 )}
               >
                 <span className="text-2xl">{BADGE_EMOJIS[bd.id] ?? bd.emoji}</span>
@@ -182,6 +234,6 @@ export default function ProfileView({
           <span>Sign Out</span>
         </button>
       </div>
-    </div>
+    </motion.div>
   );
 }

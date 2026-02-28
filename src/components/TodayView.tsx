@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import {
   PlayCircle, CheckCircle2, Clock, Flame, Zap,
   ChevronDown, ChevronUp, HelpCircle, Brain, PenTool, Target, GripVertical,
@@ -187,17 +188,17 @@ export default function TodayView({
   const courseLabel = course ? COURSE_LABELS[course].replace(/ /g, " ").toUpperCase() : "MATH";
 
   return (
-    <div className="min-h-screen bg-[#0A0F1E]">
+    <div className="min-h-screen bg-background">
       <div className="mobile-container w-full">
         {/* ── Header: top bar ── */}
-        <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0A0F1E]/95 backdrop-blur-sm">
+        <header className="sticky top-0 z-30 border-b border-border bg-background/95 backdrop-blur-sm">
           <div className="flex items-center justify-between px-4 py-3">
             <Link href="/" className="flex items-center gap-2">
-              <span className="text-xl font-black text-[#F97316]">Metoria</span>
-              <span className="text-xl font-bold text-white">Planner</span>
+              <span className="text-xl font-black text-primary">Metoria</span>
+              <span className="text-xl font-bold text-foreground">Planner</span>
             </Link>
             <div className="flex items-center gap-2">
-              <span className="hidden text-sm font-medium text-white sm:inline">{firstName}</span>
+              <span className="hidden text-sm font-medium text-foreground sm:inline">{firstName}</span>
               {profile.avatar_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
@@ -205,10 +206,10 @@ export default function TodayView({
                   alt=""
                   width={36}
                   height={36}
-                  className="h-9 w-9 rounded-full border-2 border-white/20 object-cover"
+                  className="h-9 w-9 rounded-full border-2 border-border/60 object-cover"
                 />
               ) : (
-                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#111827] text-sm font-bold text-[#F97316]">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-sm font-bold text-primary">
                   {(firstName || "U").charAt(0)}
                 </div>
               )}
@@ -216,17 +217,23 @@ export default function TodayView({
           </div>
           <div className="px-4 pb-4">
             <p className="text-sm text-muted-foreground">{greeting}, {firstName}</p>
-            <p className="mt-0.5 text-base font-semibold text-white">{motivationalSubtitle}</p>
+            <p className="mt-0.5 text-base font-semibold text-foreground">{motivationalSubtitle}</p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#111827] px-3 py-1 text-xs font-semibold text-white">
-                <Flame className="h-3.5 w-3.5 text-[#F97316]" />
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
+                <motion.span
+                  animate={{ scale: [1, 1.2, 1] }}
+                  transition={{ repeat: Infinity, duration: 1.5, ease: "easeInOut" }}
+                  className="inline-flex"
+                >
+                  <Flame className="h-3.5 w-3.5 text-primary" />
+                </motion.span>
                 {profile.current_streak} day{profile.current_streak !== 1 ? "s" : ""}
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#111827] px-3 py-1 text-xs font-semibold text-white">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
                 <Zap className="h-3.5 w-3.5 text-amber-400" />
                 {profile.total_xp.toLocaleString()} XP
               </span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-[#111827] px-3 py-1 text-xs font-semibold text-white">
+              <span className="inline-flex items-center gap-1 rounded-full bg-muted px-3 py-1 text-xs font-semibold text-foreground">
                 {completedTopicCount} topics
               </span>
             </div>
@@ -237,23 +244,23 @@ export default function TodayView({
           {/* ── Left column: main content ── */}
           <div className="flex flex-col gap-6">
             {/* Today's Focus Card (hero) */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-[#F97316]/20 via-[#111827] to-[#0A0F1E] border border-[#F97316]/20 p-6">
-              <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-[#F97316]/10 blur-3xl" />
-              <h2 className="text-lg font-bold text-white">Today&apos;s Study Focus</h2>
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/20 via-card to-background border border-primary/20 p-6 shadow-card">
+              <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-primary/10 blur-3xl" />
+              <h2 className="text-lg font-bold text-foreground">Today&apos;s Study Focus</h2>
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <div>
-                  <p className="text-2xl font-black text-white">{remainingMinutesToday}</p>
+                  <p className="text-2xl font-black text-foreground">{remainingMinutesToday}</p>
                   <p className="text-xs text-muted-foreground">min scheduled</p>
                 </div>
                 <div>
-                  <p className="text-2xl font-black text-white">{total - completed}</p>
+                  <p className="text-2xl font-black text-foreground">{total - completed}</p>
                   <p className="text-xs text-muted-foreground">sessions remaining</p>
                 </div>
               </div>
               <div className="mt-4">
-                <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
                   <div
-                    className="h-full rounded-full bg-[#F97316] transition-all duration-500"
+                    className="h-full rounded-full bg-primary transition-all duration-500"
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -264,7 +271,7 @@ export default function TodayView({
               {thisWeekPendingMinutes > 0 && (
                 <button
                   onClick={() => { setShowBusyWeekSheet(true); setBusyWeekPending(false); }}
-                  className="mt-4 rounded-xl border border-[#F97316]/50 bg-[#F97316]/10 px-4 py-2 text-sm font-semibold text-[#F97316]"
+                  className="mt-4 rounded-xl border border-primary/50 bg-primary/10 px-4 py-2 text-sm font-semibold text-primary"
                 >
                   Busy week? Reduce load
                 </button>
@@ -280,7 +287,7 @@ export default function TodayView({
                     <Link
                       key={chKey}
                       href={`/topics#chapter-${chKey}`}
-                      className="rounded-full border border-white/20 bg-[#111827] px-4 py-2 text-xs font-medium text-white transition-colors hover:border-[#F97316]/50 hover:bg-[#111827]/90"
+                      className="rounded-full border border-border bg-muted px-4 py-2 text-xs font-medium text-foreground transition-colors hover:border-primary/50 hover:bg-muted/80 hover:scale-[1.01]"
                     >
                       {label}
                       <span className="ml-1.5 text-muted-foreground">({pct}%)</span>
@@ -292,11 +299,11 @@ export default function TodayView({
 
             {/* Priority Sessions */}
             <div className="space-y-4">
-              <h3 className="text-lg font-bold text-white">Priority Sessions</h3>
+              <h3 className="text-lg font-bold text-foreground">Priority Sessions</h3>
               {sessions.length === 0 ? (
-                <div className="rounded-xl border border-white/10 bg-[#111827] p-8 text-center">
+                <div className="rounded-xl border border-border bg-card p-8 text-center">
                   <p className="text-4xl">🎉</p>
-                  <p className="mt-2 font-semibold text-white">Rest day!</p>
+                  <p className="mt-2 font-semibold text-foreground">Rest day!</p>
                   <p className="text-sm text-muted-foreground">No sessions scheduled today.</p>
                 </div>
               ) : (
@@ -307,14 +314,16 @@ export default function TodayView({
                     const isReview = s.session_type === "review" || s.session_type === "recovery";
                     const isCompleted = s.status === "completed";
                     return (
-                      <div
+                      <motion.div
                         key={s.id}
+                        whileHover={{ y: -1 }}
+                        transition={{ duration: 0.15 }}
                         className={cn(
-                          "rounded-xl border bg-[#111827] p-4 transition-all",
+                          "rounded-xl border bg-card p-4 transition-all hover:shadow-md hover:border-primary/30",
                           needsHelp && "border-destructive/40 bg-destructive/5",
-                          isCompleted && "border-white/5 opacity-80",
-                          !isCompleted && isReview && "border-[#3B82F6]/30",
-                          !isCompleted && !needsHelp && !isReview && "border-white/10"
+                          isCompleted && "border-border/20 opacity-80",
+                          !isCompleted && isReview && "border-secondary/30",
+                          !isCompleted && !needsHelp && !isReview && "border-border"
                         )}
                       >
                         <div className="flex items-start gap-3">
@@ -337,7 +346,7 @@ export default function TodayView({
                                 {s.estimated_minutes} min
                               </span>
                               {isReview && (
-                                <span className="rounded-full bg-[#3B82F6]/20 px-2 py-0.5 text-xs font-medium text-[#3B82F6]">
+                                <span className="rounded-full bg-secondary/20 px-2 py-0.5 text-xs font-medium text-secondary">
                                   {s.session_type === "recovery" ? "Recovery" : "Review"}
                                 </span>
                               )}
@@ -372,7 +381,7 @@ export default function TodayView({
                             ) : (
                               <button
                                 onClick={() => setActiveSession(s)}
-                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-transparent"
+                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-border bg-transparent"
                                 aria-label="Mark complete"
                               />
                             )}
@@ -380,10 +389,10 @@ export default function TodayView({
                         </div>
 
                         {/* Session Guide (expandable) */}
-                        <div className="mt-3 border-t border-white/10 pt-3">
+                        <div className="mt-3 border-t border-border pt-3">
                           <button
                             onClick={() => setExpandedGuideId(expandedGuideId === s.id ? null : s.id)}
-                            className="flex w-full items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-left text-sm font-medium text-muted-foreground hover:bg-white/10"
+                            className="flex w-full items-center justify-between rounded-lg bg-muted/50 px-3 py-2 text-left text-sm font-medium text-muted-foreground hover:bg-muted"
                           >
                             <span>Session Guide</span>
                             {expandedGuideId === s.id ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -392,25 +401,25 @@ export default function TodayView({
                             const guide = getSessionGuide(s.topic_id);
                             if (!guide) return null;
                             return (
-                              <div className="mt-2 space-y-3 rounded-lg border border-white/10 bg-white/5 px-3 py-3 text-xs">
+                              <div className="mt-2 space-y-3 rounded-lg border border-border bg-card/50 px-3 py-3 text-xs">
                                 <div>
-                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-white">
-                                    <Brain className="h-3.5 w-3.5 text-[#F97316]" /> Key concepts
+                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-foreground">
+                                    <Brain className="h-3.5 w-3.5 text-primary" /> Key concepts
                                   </div>
                                   <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                                     {guide.key_concepts.map((c, i) => <li key={i}>{c}</li>)}
                                   </ul>
                                 </div>
                                 <div>
-                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-white">
-                                    <PenTool className="h-3.5 w-3.5 text-[#3B82F6]" /> Practice
+                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-foreground">
+                                    <PenTool className="h-3.5 w-3.5 text-secondary" /> Practice
                                   </div>
                                   <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
                                     {guide.practice_tasks.map((t, i) => <li key={i}>{t}</li>)}
                                   </ul>
                                 </div>
                                 <div>
-                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-white">
+                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-foreground">
                                     <HelpCircle className="h-3.5 w-3.5 text-amber-400" /> Self-check
                                   </div>
                                   <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
@@ -418,7 +427,7 @@ export default function TodayView({
                                   </ul>
                                 </div>
                                 <div>
-                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-white">
+                                  <div className="mb-1 flex items-center gap-1.5 font-semibold text-foreground">
                                     <Target className="h-3.5 w-3.5 text-green-500" /> IB exam tips
                                   </div>
                                   <ul className="list-inside list-disc space-y-0.5 text-muted-foreground">
@@ -431,14 +440,15 @@ export default function TodayView({
                         </div>
 
                         {s.status === "pending" && (
-                          <button
-                            className="mt-3 w-full rounded-xl bg-[#F97316] py-2.5 text-sm font-bold text-white hover:bg-[#F97316]/90"
+                          <motion.button
+                            whileTap={{ scale: 0.97 }}
+                            className="mt-3 w-full rounded-xl bg-primary py-2.5 text-sm font-bold text-white hover:bg-primary/90"
                             onClick={() => setActiveSession(s)}
                           >
                             <PlayCircle className="mr-1.5 inline h-4 w-4" /> Start Session
-                          </button>
+                          </motion.button>
                         )}
-                      </div>
+                      </motion.div>
                     );
                   })}
                 </div>
@@ -449,8 +459,8 @@ export default function TodayView({
           {/* ── Right column: sidebar (hidden on mobile) ── */}
           <aside className="hidden flex-col gap-6 md:flex">
             {/* Deep Work Blocks */}
-            <div className="rounded-xl border border-white/10 bg-[#111827] p-4">
-              <h3 className="text-sm font-bold text-white">Deep Work Blocks</h3>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <h3 className="text-sm font-bold text-foreground">Deep Work Blocks</h3>
               <p className="mt-1 text-xs text-muted-foreground">Today&apos;s schedule</p>
               {deepWorkSlots.length === 0 ? (
                 <p className="mt-4 text-sm text-muted-foreground">No sessions planned for today.</p>
@@ -461,7 +471,7 @@ export default function TodayView({
                       <div className="w-14 shrink-0 text-xs font-medium text-muted-foreground">
                         {slot.start} – {slot.end}
                       </div>
-                      <div className="flex-1 rounded-lg bg-[#F97316]/20 px-3 py-2 text-xs font-medium text-[#F97316]">
+                      <div className="flex-1 rounded-lg bg-primary/20 px-3 py-2 text-xs font-medium text-primary">
                         {slot.session.topic_name}
                       </div>
                     </div>
@@ -471,12 +481,12 @@ export default function TodayView({
             </div>
 
             {/* Upcoming Milestones */}
-            <div className="rounded-xl border border-white/10 bg-[#111827] p-4">
-              <h3 className="text-sm font-bold text-white">Upcoming Milestones</h3>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <h3 className="text-sm font-bold text-foreground">Upcoming Milestones</h3>
               <div className="mt-4 space-y-3">
-                <div className="rounded-lg bg-[#F97316]/10 p-3">
-                  <p className="text-xs font-semibold text-[#F97316]">Exam countdown</p>
-                  <p className="text-2xl font-black text-white">
+                <div className="rounded-lg bg-primary/10 p-3">
+                  <p className="text-xs font-semibold text-primary">Exam countdown</p>
+                  <p className="text-2xl font-black text-foreground">
                     {examPassed ? "Done" : `${daysUntilExam} days`}
                   </p>
                   {!examPassed && (
@@ -490,7 +500,7 @@ export default function TodayView({
                     <p className="text-xs font-semibold text-muted-foreground">Tomorrow</p>
                     <ul className="mt-2 space-y-1">
                       {tomorrowSessions.map((s) => (
-                        <li key={s.id} className="truncate text-sm text-white">
+                        <li key={s.id} className="truncate text-sm text-foreground">
                           {s.topic_name}
                         </li>
                       ))}
@@ -501,8 +511,8 @@ export default function TodayView({
             </div>
 
             {/* Weekly Progress */}
-            <div className="rounded-xl border border-white/10 bg-[#111827] p-4">
-              <h3 className="text-sm font-bold text-white">Weekly Progress</h3>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <h3 className="text-sm font-bold text-foreground">Weekly Progress</h3>
               <p className="mt-1 text-xs text-muted-foreground">Study minutes this week</p>
               <div className="mt-4 flex items-end justify-between gap-1">
                 {Array.from({ length: 7 }).map((_, i) => {
@@ -516,7 +526,7 @@ export default function TodayView({
                       <div
                         className={cn(
                           "w-full min-h-[4px] rounded-t transition-all",
-                          isToday ? "bg-[#F97316]" : "bg-white/20"
+                          isToday ? "bg-primary" : "bg-muted"
                         )}
                         style={{ height: `${Math.max(4, (mins / maxWeekMinutes) * 80)}px` }}
                       />
@@ -536,15 +546,15 @@ export default function TodayView({
       {showBusyWeekSheet && (
         <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 pb-20" onClick={() => setShowBusyWeekSheet(false)}>
           <div
-            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl border border-white/10 bg-[#111827] p-4 pb-8 shadow-lg"
+            className="w-full max-w-lg max-h-[85vh] overflow-y-auto rounded-t-2xl border border-border bg-card p-4 pb-8 shadow-lg"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-lg font-bold text-white">Busy week</h3>
-              <button onClick={() => setShowBusyWeekSheet(false)} className="p-1 text-muted-foreground hover:text-white">×</button>
+              <h3 className="text-lg font-bold text-foreground">Busy week</h3>
+              <button onClick={() => setShowBusyWeekSheet(false)} className="p-1 text-muted-foreground hover:text-foreground">×</button>
             </div>
             <p className="text-sm text-muted-foreground">
-              This week you have <span className="font-semibold text-white">{thisWeekPendingMinutes} min</span> of study planned.
+              This week you have <span className="font-semibold text-foreground">{thisWeekPendingMinutes} min</span> of study planned.
               We can reduce it by 50% and spread the rest to later weeks.
             </p>
             <p className="mt-2 text-xs text-muted-foreground">
@@ -565,7 +575,7 @@ export default function TodayView({
                 });
               }}
               disabled={busyWeekPending}
-              className="mt-4 w-full rounded-xl bg-[#F97316] py-3 text-sm font-bold text-white disabled:opacity-50"
+              className="mt-4 w-full rounded-xl bg-primary py-3 text-sm font-bold text-white disabled:opacity-50"
             >
               {busyWeekPending ? "Applying..." : "Reduce by 50%"}
             </button>

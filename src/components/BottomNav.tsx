@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import Link from "next/link";
+import { motion } from "framer-motion";
 import { Home, BookOpen, FolderOpen, Trophy, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -18,7 +19,7 @@ export default function BottomNav() {
 
   return (
     <div className="fixed bottom-0 left-0 right-0 z-40 flex justify-center">
-      <div className="mobile-container w-full border-t border-border bg-card/95 backdrop-blur-md">
+      <div className="mobile-container w-full bg-white/95 backdrop-blur-md shadow-[0_-1px_0_0_hsl(var(--border))]">
         <div className="flex items-center justify-around px-2 py-2 pb-[env(safe-area-inset-bottom,8px)]">
           {TABS.map((tab) => {
             const Icon = tab.icon;
@@ -32,15 +33,17 @@ export default function BottomNav() {
                 href={tab.href}
                 className="flex flex-1 flex-col items-center gap-1 rounded-xl px-3 py-1.5 transition-all"
               >
-                <div
-                  className={cn(
-                    "rounded-xl p-2 transition-all",
-                    isActive && "gradient-primary glow-primary"
+                <div className={cn("relative rounded-xl p-2")}>
+                  {isActive && (
+                    <motion.div
+                      layoutId="activeTabIndicator"
+                      className="absolute inset-0 gradient-primary glow-primary rounded-xl"
+                      transition={{ type: "spring", stiffness: 400, damping: 30 }}
+                    />
                   )}
-                >
                   <Icon
                     className={cn(
-                      "h-5 w-5 transition-colors",
+                      "relative h-5 w-5 transition-colors z-10",
                       isActive ? "text-white" : "text-muted-foreground"
                     )}
                   />

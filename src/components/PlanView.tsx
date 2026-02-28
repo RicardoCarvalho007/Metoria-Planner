@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
+import { motion } from "framer-motion";
 import {
   DndContext,
   DragEndEvent,
@@ -12,6 +13,9 @@ import {
   useSensors,
 } from "@dnd-kit/core";
 import { AlertTriangle, Calendar, List, Clock, HelpCircle, ChevronDown, Brain, PenTool, Target, ChevronUp, GripVertical } from "lucide-react";
+import {
+  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 import { cn } from "@/lib/utils";
 import { CHAPTERS, getChapterForTopic, getSubTopicsForTopic, getSessionGuide } from "@/data/syllabus";
 import { rescheduleAllMissed, smartRecovery, saveWeekOverride, reorderSession } from "@/actions/plan";
@@ -193,7 +197,12 @@ export default function PlanView({
       </div>
 
       {/* Progress ring */}
-      <div className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-card">
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.3 }}
+        className="flex items-center gap-4 rounded-xl border border-border bg-card p-4 shadow-card"
+      >
         <div className="relative h-24 w-24 flex-shrink-0">
           <svg className="h-full w-full -rotate-90" viewBox="0 0 100 100">
             <circle cx="50" cy="50" r="40" fill="none" stroke="hsl(var(--muted))" strokeWidth="8" />
@@ -221,7 +230,74 @@ export default function PlanView({
             </span>
           </div>
         </div>
-      </div>
+      </motion.div>
+
+      {/* Charts */}
+      {(() => {
+        // Weekly study hours data (current week Mon–Sun)
+        const wkStart = new Date();
+        wkStart.setDate(wkStart.getDate() - ((wkStart.getDay() + 6) % 7));
+        const weeklyData = ["Mon","Tue","Wed","Thu","Fri","Sat","Sun"].map((label, i) => {
+          const d = new Date(wkStart);
+          d.setDate(wkStart.getDate() + i);
+          const dateStr = d.toISOString().split("T")[0];
+          const hours = sessions
+            .filter((s) => s.scheduled_date === dateStr)
+            .reduce((sum, s) => sum + s.estimated_minutes / 60, 0);
+          return { day: label, hours: Math.round(hours * 10) / 10 };
+        });
+        const hasWeeklyData = weeklyData.some((d) => d.hours > 0);
+
+        // Topic completion by chapter
+        const chapterData = Object.entries(CHAPTERS).map(([key, label]) => {
+          const chSessions = sessions.filter((s) => getChapterForTopic(s.topic_id) === key);
+          const done = chSessions.filter((s) => s.status === "completed").length;
+          const total = chSessions.length;
+          return { name: label.length > 12 ? label.slice(0, 12) + "…" : label, done, total, pending: total - done };
+        }).filter((c) => c.total > 0).slice(0, 5);
+
+        if (!hasWeeklyData && chapterData.length === 0) return null;
+
+        return (
+          <div className="space-y-4">
+            {hasWeeklyData && (
+              <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+                <h3 className="mb-3 text-sm font-bold">Weekly Study Hours</h3>
+                <ResponsiveContainer width="100%" height={140}>
+                  <BarChart data={weeklyData} margin={{ top: 0, right: 4, left: -20, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 35% 82%)" vertical={false} />
+                    <XAxis dataKey="day" tick={{ fontSize: 11, fill: "hsl(27 18% 42%)" }} axisLine={false} tickLine={false} />
+                    <YAxis tick={{ fontSize: 11, fill: "hsl(27 18% 42%)" }} axisLine={false} tickLine={false} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(38 100% 98%)", border: "1px solid hsl(35 35% 82%)", borderRadius: 8, fontSize: 12 }}
+                      labelStyle={{ color: "hsl(27 82% 7%)", fontWeight: 600 }}
+                    />
+                    <Bar dataKey="hours" fill="hsl(25 95% 53%)" radius={[4, 4, 0, 0]} name="Hours" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+            {chapterData.length > 0 && (
+              <div className="rounded-xl border border-border bg-card p-4 shadow-card">
+                <h3 className="mb-3 text-sm font-bold">Topic Completion by Chapter</h3>
+                <ResponsiveContainer width="100%" height={160}>
+                  <BarChart data={chapterData} layout="vertical" margin={{ top: 0, right: 8, left: 0, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(35 35% 82%)" horizontal={false} />
+                    <XAxis type="number" tick={{ fontSize: 11, fill: "hsl(27 18% 42%)" }} axisLine={false} tickLine={false} />
+                    <YAxis type="category" dataKey="name" tick={{ fontSize: 10, fill: "hsl(27 18% 42%)" }} axisLine={false} tickLine={false} width={80} />
+                    <Tooltip
+                      contentStyle={{ background: "hsl(38 100% 98%)", border: "1px solid hsl(35 35% 82%)", borderRadius: 8, fontSize: 12 }}
+                      labelStyle={{ color: "hsl(27 82% 7%)", fontWeight: 600 }}
+                    />
+                    <Bar dataKey="done" stackId="a" fill="hsl(160 84% 39%)" name="Done" radius={[0, 0, 0, 0]} />
+                    <Bar dataKey="pending" stackId="a" fill="hsl(35 52% 88%)" name="Pending" radius={[0, 4, 4, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* Missed banner */}
       {missedCount > 0 && (
@@ -360,7 +436,7 @@ export default function PlanView({
                           isToday && !isSelected && "bg-primary text-white",
                           isSelected && "ring-2 ring-primary bg-primary/20 text-primary font-bold",
                           !isToday && !isSelected && isPast && "text-muted-foreground",
-                          hasSession && !isToday && !isSelected && "hover:bg-muted",
+                          !isToday && !isSelected && "hover:bg-muted",
                         )}
                       >
                         {d.getDate()}
@@ -512,10 +588,12 @@ export default function PlanView({
                   const guideOpen = expandedGuideId === s.id;
                   const guide = getSessionGuide(s.topic_id);
                   return (
-                    <div
+                    <motion.div
                       key={s.id}
+                      whileHover={{ y: -1 }}
+                      transition={{ duration: 0.15 }}
                       className={cn(
-                        "rounded-xl border bg-card shadow-card overflow-hidden",
+                        "rounded-xl border bg-card shadow-card overflow-hidden hover:border-primary/30 transition-all duration-200",
                         needsHelp ? "border-destructive/40 bg-destructive/5" : "border-border"
                       )}
                     >
@@ -570,7 +648,7 @@ export default function PlanView({
                           )}
                         </div>
                       )}
-                    </div>
+                    </motion.div>
                   );
                 })}
               </div>
