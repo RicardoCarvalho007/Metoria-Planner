@@ -76,9 +76,20 @@ export default function ProfileView({
     <div className="flex flex-col gap-4 page-padding py-5 animate-fade-up">
       {/* Profile header */}
       <div className="flex flex-col items-center gap-3 rounded-xl border border-border bg-card p-6 shadow-card">
-        <div className="flex h-20 w-20 items-center justify-center rounded-full gradient-primary text-2xl font-black text-white glow-primary">
-          {getInitials(profile.full_name)}
-        </div>
+        {profile.avatar_url ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={profile.avatar_url}
+            alt=""
+            width={80}
+            height={80}
+            className="h-20 w-20 rounded-full border-2 border-primary/30 object-cover"
+          />
+        ) : (
+          <div className="flex h-20 w-20 items-center justify-center rounded-full gradient-primary text-2xl font-black text-white glow-primary">
+            {getInitials(profile.full_name)}
+          </div>
+        )}
         <div className="text-center">
           <h1 className="text-xl font-black">{profile.full_name}</h1>
           <p className="text-sm text-muted-foreground">{profile.email}</p>

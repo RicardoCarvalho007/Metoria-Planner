@@ -371,6 +371,7 @@ export default function TodayView({
                               </div>
                             ) : (
                               <button
+                                onClick={() => setActiveSession(s)}
                                 className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border-2 border-white/30 bg-transparent"
                                 aria-label="Mark complete"
                               />

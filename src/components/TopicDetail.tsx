@@ -7,7 +7,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { SubTopic } from "@/data/syllabus";
 import type { TopicNote, TopicUpload } from "@/types/database";
-import { saveNote } from "@/actions/topics";
+import { saveNote, deleteNote } from "@/actions/topics";
 import { uploadFile, deleteFile } from "@/actions/topics";
 
 interface Props {
@@ -22,10 +22,10 @@ interface Props {
 export default function TopicDetail({
   topicId, topicName, subTopics, notes, uploads: initialUploads, onClose,
 }: Props) {
+  const existingNote = notes.find((n) => n.topic_id === topicId && !n.subtopic_id);
   const [tab, setTab] = useState<"objectives" | "notes" | "files">("objectives");
-  const [noteContent, setNoteContent] = useState(
-    notes.find((n) => n.topic_id === topicId && !n.subtopic_id)?.content ?? ""
-  );
+  const [noteContent, setNoteContent] = useState(existingNote?.content ?? "");
+  const [noteId, setNoteId] = useState<string | null>(existingNote?.id ?? null);
   const [uploads, setUploads] = useState(initialUploads);
   const [saving, startSaving] = useTransition();
   const [uploading, setUploading] = useState(false);
@@ -34,6 +34,15 @@ export default function TopicDetail({
   const handleSaveNote = () => {
     startSaving(async () => {
       await saveNote(topicId, null, noteContent);
+    });
+  };
+
+  const handleDeleteNote = () => {
+    if (!noteId) return;
+    startSaving(async () => {
+      await deleteNote(noteId);
+      setNoteContent("");
+      setNoteId(null);
     });
   };
 
@@ -168,14 +177,25 @@ export default function TopicDetail({
                 rows={12}
                 className="w-full rounded-xl border border-border bg-card px-4 py-3 text-sm outline-none transition-colors focus:border-primary placeholder:text-muted-foreground resize-none"
               />
-              <button
-                onClick={handleSaveNote}
-                disabled={saving}
-                className="w-full rounded-xl gradient-primary py-3 text-sm font-bold text-white disabled:opacity-50"
-              >
-                <Save className="mr-1.5 inline h-4 w-4" />
-                {saving ? "Saving..." : "Save Notes"}
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleSaveNote}
+                  disabled={saving}
+                  className="flex-1 rounded-xl gradient-primary py-3 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  <Save className="mr-1.5 inline h-4 w-4" />
+                  {saving ? "Saving..." : "Save Notes"}
+                </button>
+                {noteId && (
+                  <button
+                    onClick={handleDeleteNote}
+                    disabled={saving}
+                    className="rounded-xl border border-destructive/30 px-4 py-3 text-sm font-semibold text-destructive transition-all hover:bg-destructive/10 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             </div>
           )}
 
